@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package video;
+
+option go_package = "github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gen/video";
+
+// VideoChunk represents a video data chunk sent during upload streaming.
+// - filename is filled only on the first chunk, empty on subsequent chunks
+// - done is set to true on the last chunk to signal end of stream
+message VideoChunk {
+  bytes  data     = 1;
+  bool   done     = 2;
+  string filename = 3;
+}
+
+// TranscodeChunk represents a transcoded output chunk for a specific resolution.
+// - resolution identifies the output (e.g. "720p", "480p", "360p")
+// - done is set to true on the last chunk of each resolution
+message TranscodeChunk {
+  string resolution = 1;
+  bytes  data       = 2;
+  bool   done       = 3;
+}
+
+// StatusRequest represents an empty request for health check.
+message StatusRequest {}
+
+// StatusResponse represents the health check result from Gateway.
+message StatusResponse {
+  string status  = 1; // "ok" or "error"
+  string message = 2;
+}
+
+// GatewayService defines the interface called by Client.
+service GatewayService {
+  // TranscodeVideo receives a video stream from Client and returns transcoded output chunks.
+  // Client sends all chunks first (done=true on last), Gateway replies after transcoding completes.
+  rpc TranscodeVideo(stream VideoChunk) returns (stream TranscodeChunk);
+
+  // CheckStatus performs a unary health check from Client to Gateway.
+  rpc CheckStatus(StatusRequest) returns (StatusResponse);
+}
+
+// WorkerService defines the interface called by Gateway.
+service WorkerService {
+  // ProcessVideo receives a video stream from Gateway and returns transcoded output chunks.
+  rpc ProcessVideo(stream VideoChunk) returns (stream TranscodeChunk);
+}
