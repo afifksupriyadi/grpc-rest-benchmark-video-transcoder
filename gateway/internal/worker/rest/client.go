@@ -1,7 +1,7 @@
-// Package rest provides a REST implementation of the WorkerClient interface.
 package rest
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -29,11 +29,11 @@ func NewRestWorkerClient(httpClient httpclient.Client, workerURL string) service
 }
 
 // ProcessVideo sends the video payload to the worker via HTTP POST and reads the chunked response.
-// It reads ChunkHeader JSON before each binary chunk to identify the resolution and size.
+// It reads ChunkHeader JSON lines before each binary chunk to identify the resolution and size.
 func (c *RestWorkerClient) ProcessVideo(ctx context.Context, payload model.VideoPayload) (*model.TranscodeResult, error) {
 	req := &httpclient.Request{
 		Method: http.MethodPost,
-		URL:    fmt.Sprintf("%s/process", c.workerURL),
+		URL:    fmt.Sprintf("http://%s/v1/process", c.workerURL),
 		Headers: map[string]string{
 			"Content-Type":     "application/octet-stream",
 			"X-Video-Filename": payload.Filename,
@@ -50,30 +50,34 @@ func (c *RestWorkerClient) ProcessVideo(ctx context.Context, payload model.Video
 }
 
 // parseChunkedResponse reads the chunked streaming response from the worker.
-// It reads alternating ChunkHeader (JSON) and binary data until all resolutions are received.
+// It uses bufio.Reader to safely alternate between JSON header lines and binary data reads.
 func parseChunkedResponse(body []byte) (*model.TranscodeResult, error) {
-	reader := bytes.NewReader(body)
+	reader := bufio.NewReader(bytes.NewReader(body))
 	result := &model.TranscodeResult{}
 
 	for {
-		// read chunk header
-		var header model.ChunkHeader
-		decoder := json.NewDecoder(reader)
-		if err := decoder.Decode(&header); err != nil {
+		// read JSON header line (json.Encoder.Encode always appends \n)
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
 			if err == io.EOF {
 				break
 			}
+			return nil, fmt.Errorf("failed to read chunk header line: %w", err)
+		}
+
+		var header model.ChunkHeader
+		if err := json.Unmarshal(line, &header); err != nil {
 			return nil, fmt.Errorf("failed to decode chunk header: %w", err)
 		}
 
-		if header.Done {
+		if header.Done || header.Size == 0 {
 			continue
 		}
 
-		// read binary data
+		// read binary data exactly Size bytes
 		data := make([]byte, header.Size)
 		if _, err := io.ReadFull(reader, data); err != nil {
-			return nil, fmt.Errorf("failed to read chunk data: %w", err)
+			return nil, fmt.Errorf("failed to read chunk data for %s: %w", header.Resolution, err)
 		}
 
 		result.Outputs = append(result.Outputs, model.ResolutionOutput{
