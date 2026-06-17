@@ -44,7 +44,7 @@ func main() {
 
 	// start REST server
 	go func() {
-		restHandler := resthandler.NewVideoHandler(restVideoSvc, metricsRecorder)
+		restHandler := resthandler.NewVideoHandler(restVideoSvc, metricsRecorder, cfg)
 		r := gin.Default()
 		resthandler.RegisterRoutes(r, restHandler)
 		addr := fmt.Sprintf(":%d", cfg.RESTPort)

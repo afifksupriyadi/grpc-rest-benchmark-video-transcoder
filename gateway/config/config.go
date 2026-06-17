@@ -24,10 +24,11 @@ type HTTPClientConfig struct {
 
 // Config holds all configuration for the gateway service.
 type Config struct {
-	Env         string `env:"ENV" env-default:"dev"`
-	RESTPort    int    `env:"REST_PORT" env-default:"8080"`
-	GRPCPort    int    `env:"GRPC_PORT" env-default:"50051"`
-	MetricsPort int    `env:"METRICS_PORT" env-default:"2112"`
+	Env              string `env:"ENV" env-default:"dev"`
+	RESTPort         int    `env:"REST_PORT" env-default:"8080"`
+	GRPCPort         int    `env:"GRPC_PORT" env-default:"50051"`
+	MetricsPort      int    `env:"METRICS_PORT" env-default:"2112"`
+	MaxFileSizeBytes int64  `env:"MAX_FILE_SIZE_BYTES" env-default:"524288000"`
 
 	Worker     WorkerConfig
 	HTTPClient HTTPClientConfig

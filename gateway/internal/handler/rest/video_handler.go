@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/config"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/constant"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/service"
@@ -18,11 +19,12 @@ import (
 type VideoHandler struct {
 	svc     service.VideoService
 	metrics metrics.MetricsRecorder
+	cfg     *config.Config
 }
 
 // NewVideoHandler creates a new VideoHandler with the given service and metrics recorder.
-func NewVideoHandler(svc service.VideoService, metrics metrics.MetricsRecorder) *VideoHandler {
-	return &VideoHandler{svc: svc, metrics: metrics}
+func NewVideoHandler(svc service.VideoService, metrics metrics.MetricsRecorder, cfg *config.Config) *VideoHandler {
+	return &VideoHandler{svc: svc, metrics: metrics, cfg: cfg}
 }
 
 // HandleTranscode receives a video upload, forwards it for transcoding, and streams the result back.
@@ -32,18 +34,13 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 	// t1: client starts sending to gateway
 	t1 := time.Now()
 
-	file, header, err := c.Request.FormFile("video")
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.cfg.MaxFileSizeBytes)
+	data, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "video file is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large or failed to read"})
 		return
 	}
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read video file"})
-		return
-	}
+	filename := c.Request.Header.Get("X-Video-Filename")
 
 	// t2: gateway finishes receiving from client
 	t2 := time.Now()
@@ -53,7 +50,7 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 	h.metrics.RecordThroughput(constant.SegmentClientToGateway, int64(len(data)), clientToGatewayDuration)
 
 	payload := model.VideoPayload{
-		Filename: header.Filename,
+		Filename: filename,
 		Data:     data,
 	}
 
