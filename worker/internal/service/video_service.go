@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/lib/metrics"
 )
@@ -29,10 +30,9 @@ func (s *VideoServiceImpl) Process(ctx context.Context, data model.VideoData) (*
 	// FFmpeg runs here — not measured
 	result, err := s.processor.Process(data)
 	if err != nil {
-		return nil, err
+		return nil, response.WrapAppError(ctx, err, response.ErrFFmpegFailed, "ffmpeg failed to process video")
 	}
-	// t5: worker starts sending results to gateway (recorded by handler after this returns)
 
-	_ = result
+	// t5: worker starts sending results to gateway (recorded by handler after this returns)
 	return result, nil
 }

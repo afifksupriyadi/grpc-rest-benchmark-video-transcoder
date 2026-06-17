@@ -40,15 +40,15 @@ func NewPrometheusRecorder(reg *prometheus.Registry) *PrometheusRecorder {
 }
 
 // RecordLatency records the latency for a given segment and protocol.
-func (p *PrometheusRecorder) RecordLatency(segment string, duration time.Duration) {
-	p.latency.WithLabelValues(segment).Observe(duration.Seconds())
+func (p *PrometheusRecorder) RecordLatency(segment string, protocol string, duration time.Duration) {
+	p.latency.WithLabelValues(segment, protocol).Observe(duration.Seconds())
 }
 
 // RecordThroughput records the throughput for a given segment and protocol.
-func (p *PrometheusRecorder) RecordThroughput(segment string, bytes int64, duration time.Duration) {
+func (p *PrometheusRecorder) RecordThroughput(segment string, protocol string, bytes int64, duration time.Duration) {
 	if duration.Seconds() <= 0 {
 		return
 	}
 	bps := float64(bytes) / duration.Seconds()
-	p.throughput.WithLabelValues(segment).Observe(bps)
+	p.throughput.WithLabelValues(segment, protocol).Observe(bps)
 }

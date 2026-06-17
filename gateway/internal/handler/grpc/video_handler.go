@@ -9,8 +9,10 @@ import (
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/constant"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/service"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/util/contextutil"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/lib/metrics"
 	pb "github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gen/video"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
 )
 
 const chunkSize = 32 * 1024 // 32KB per chunk
@@ -65,12 +67,13 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 	t2 := time.Now()
 
 	clientToGatewayDuration := t2.Sub(t1)
-	s.metrics.RecordLatency(constant.SegmentClientToGateway, clientToGatewayDuration)
-	s.metrics.RecordThroughput(constant.SegmentClientToGateway, int64(len(payload.Data)), clientToGatewayDuration)
+	s.metrics.RecordLatency(constant.SegmentClientToGateway, constant.ProtocolGRPC, clientToGatewayDuration)
+	s.metrics.RecordThroughput(constant.SegmentClientToGateway, constant.ProtocolGRPC, int64(len(payload.Data)), clientToGatewayDuration)
 
-	result, err := s.svc.Transcode(stream.Context(), payload)
+	ctx := contextutil.SetProtocol(stream.Context(), constant.ProtocolGRPC)
+	result, err := s.svc.Transcode(ctx, payload)
 	if err != nil {
-		return err
+		return response.ParseErrorWithGRPC(err)
 	}
 
 	// t7: gateway starts sending to client
@@ -108,8 +111,8 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 	t8 := time.Now()
 
 	gatewayToClientDuration := t8.Sub(t7)
-	s.metrics.RecordLatency(constant.SegmentGatewayToClient, gatewayToClientDuration)
-	s.metrics.RecordThroughput(constant.SegmentGatewayToClient, int64(len(payload.Data)), gatewayToClientDuration)
+	s.metrics.RecordLatency(constant.SegmentGatewayToClient, constant.ProtocolGRPC, gatewayToClientDuration)
+	s.metrics.RecordThroughput(constant.SegmentGatewayToClient, constant.ProtocolGRPC, int64(len(payload.Data)), gatewayToClientDuration)
 
 	return nil
 }

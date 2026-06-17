@@ -11,7 +11,9 @@ import (
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/constant"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/service"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/util/contextutil"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/lib/metrics"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
 	"github.com/gin-gonic/gin"
 )
 
@@ -37,7 +39,8 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.cfg.MaxFileSizeBytes)
 	data, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large or failed to read"})
+		c.JSON(http.StatusBadRequest, response.BuildError(c.Request.Context(),
+			response.WrapAppError(c.Request.Context(), err, response.ErrInvalidRequest, "failed to read request body")))
 		return
 	}
 	filename := c.Request.Header.Get("X-Video-Filename")
@@ -46,17 +49,19 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 	t2 := time.Now()
 
 	clientToGatewayDuration := t2.Sub(t1)
-	h.metrics.RecordLatency(constant.SegmentClientToGateway, clientToGatewayDuration)
-	h.metrics.RecordThroughput(constant.SegmentClientToGateway, int64(len(data)), clientToGatewayDuration)
+	h.metrics.RecordLatency(constant.SegmentClientToGateway, constant.ProtocolREST, clientToGatewayDuration)
+	h.metrics.RecordThroughput(constant.SegmentClientToGateway, constant.ProtocolREST, int64(len(data)), clientToGatewayDuration)
 
 	payload := model.VideoPayload{
 		Filename: filename,
 		Data:     data,
 	}
 
-	result, err := h.svc.Transcode(c.Request.Context(), payload)
+	ctx := contextutil.SetProtocol(c.Request.Context(), constant.ProtocolREST)
+	result, err := h.svc.Transcode(ctx, payload)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		res := response.BuildError(c.Request.Context(), err)
+		c.JSON(res.Status, res.Body)
 		return
 	}
 
@@ -88,8 +93,8 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 	t8 := time.Now()
 
 	gatewayToClientDuration := t8.Sub(t7)
-	h.metrics.RecordLatency(constant.SegmentGatewayToClient, gatewayToClientDuration)
-	h.metrics.RecordThroughput(constant.SegmentGatewayToClient, int64(totalSize(result)), gatewayToClientDuration)
+	h.metrics.RecordLatency(constant.SegmentGatewayToClient, constant.ProtocolREST, gatewayToClientDuration)
+	h.metrics.RecordThroughput(constant.SegmentGatewayToClient, constant.ProtocolREST, int64(totalSize(result)), gatewayToClientDuration)
 }
 
 // totalSize calculates the total bytes of all transcoded outputs.

@@ -8,6 +8,7 @@ import (
 
 	"encoding/json"
 
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/constant"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/service"
@@ -31,12 +32,10 @@ func NewVideoHandler(svc service.VideoService, metrics metrics.MetricsRecorder) 
 func (h *VideoHandler) HandleProcess(c *gin.Context) {
 	data, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+		c.JSON(http.StatusBadRequest, response.BuildError(c.Request.Context(),
+			response.WrapAppError(c.Request.Context(), nil, response.ErrInvalidRequest, "failed to read video file")))
 		return
 	}
-
-	// t4: worker finishes receiving from gateway
-	t4 := time.Now()
 
 	filename := c.Request.Header.Get("X-Video-Filename")
 	videoData := model.VideoData{
@@ -44,13 +43,10 @@ func (h *VideoHandler) HandleProcess(c *gin.Context) {
 		Data:     data,
 	}
 
-	gatewayToWorkerDuration := t4.Sub(t4) // placeholder, t3 comes from gateway
-	h.metrics.RecordLatency(constant.SegmentGatewayToWorker, gatewayToWorkerDuration)
-	h.metrics.RecordThroughput(constant.SegmentGatewayToWorker, int64(len(data)), gatewayToWorkerDuration)
-
 	result, err := h.svc.Process(c.Request.Context(), videoData)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		res := response.BuildError(c.Request.Context(), err)
+		c.JSON(res.Status, res.Body)
 		return
 	}
 
@@ -80,8 +76,8 @@ func (h *VideoHandler) HandleProcess(c *gin.Context) {
 
 	// record t5 → t6 duration (t6 recorded by gateway when it finishes receiving)
 	workerToGatewayDuration := time.Since(t5)
-	h.metrics.RecordLatency(constant.SegmentWorkerToGateway, workerToGatewayDuration)
-	h.metrics.RecordThroughput(constant.SegmentWorkerToGateway, int64(totalSize(result)), workerToGatewayDuration)
+	h.metrics.RecordLatency(constant.SegmentWorkerToGateway, constant.ProtocolREST, workerToGatewayDuration)
+	h.metrics.RecordThroughput(constant.SegmentWorkerToGateway, constant.ProtocolREST, int64(totalSize(result)), workerToGatewayDuration)
 }
 
 // totalSize calculates the total bytes of all transcoded outputs.

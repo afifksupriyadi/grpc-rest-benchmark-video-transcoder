@@ -6,6 +6,7 @@ import (
 	"time"
 
 	pb "github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gen/video"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/constant"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/service"
@@ -55,15 +56,9 @@ func (s *VideoServer) ProcessVideo(stream pb.WorkerService_ProcessVideoServer) e
 		videoData.Data = append(videoData.Data, chunk.Data...)
 	}
 
-	// t4: worker finishes receiving from gateway
-	t4 := time.Now()
-
-	s.metrics.RecordLatency(constant.SegmentGatewayToWorker, time.Since(t4))
-	s.metrics.RecordThroughput(constant.SegmentGatewayToWorker, int64(len(videoData.Data)), time.Since(t4))
-
 	result, err := s.svc.Process(stream.Context(), videoData)
 	if err != nil {
-		return err
+		return response.ParseErrorWithGRPC(err)
 	}
 
 	// t5: worker starts sending results to gateway
@@ -96,8 +91,8 @@ func (s *VideoServer) ProcessVideo(stream pb.WorkerService_ProcessVideoServer) e
 	}
 
 	workerToGatewayDuration := time.Since(t5)
-	s.metrics.RecordLatency(constant.SegmentWorkerToGateway, workerToGatewayDuration)
-	s.metrics.RecordThroughput(constant.SegmentWorkerToGateway, int64(totalSize(result)), workerToGatewayDuration)
+	s.metrics.RecordLatency(constant.SegmentWorkerToGateway, constant.ProtocolGRPC, workerToGatewayDuration)
+	s.metrics.RecordThroughput(constant.SegmentWorkerToGateway, constant.ProtocolGRPC, int64(totalSize(result)), workerToGatewayDuration)
 
 	return nil
 }

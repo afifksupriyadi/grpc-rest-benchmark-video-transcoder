@@ -11,8 +11,9 @@ func NewNilMetricsRecorder() *NilMetricsRecorder {
 }
 
 // RecordLatency does nothing.
-func (n *NilMetricsRecorder) RecordLatency(segment string, duration time.Duration) {}
+func (n *NilMetricsRecorder) RecordLatency(segment string, protocol string, duration time.Duration) {
+}
 
 // RecordThroughput does nothing.
-func (n *NilMetricsRecorder) RecordThroughput(segment string, bytes int64, duration time.Duration) {
+func (n *NilMetricsRecorder) RecordThroughput(segment string, protocol string, bytes int64, duration time.Duration) {
 }
