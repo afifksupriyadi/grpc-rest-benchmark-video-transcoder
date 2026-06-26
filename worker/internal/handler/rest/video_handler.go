@@ -2,13 +2,12 @@
 package rest
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"time"
 
-	"encoding/json"
-
-	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/constant"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/service"
@@ -28,14 +27,28 @@ func NewVideoHandler(svc service.VideoService, metrics metrics.MetricsRecorder) 
 }
 
 // HandleProcess receives a raw video upload from gateway, processes it, and streams results back.
-// It records t4 after reading the full request body and t5 before streaming the response.
+// It reads t3 from the request header to compute SegmentGatewayToWorker locally.
+// It sets t5 in the response header before streaming results back.
 func (h *VideoHandler) HandleProcess(c *gin.Context) {
-	data, err := io.ReadAll(c.Request.Body)
+	t3Str := c.Request.Header.Get(timing.HeaderTimestamp)
+	t3, err := timing.DecodeTimestamp(t3Str)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, response.BuildError(c.Request.Context(),
-			response.WrapAppError(c.Request.Context(), nil, response.ErrInvalidRequest, "failed to read video file")))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing or invalid timestamp header"})
 		return
 	}
+
+	data, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+		return
+	}
+
+	// t4: worker finishes receiving from gateway
+	t4 := time.Now()
+
+	gatewayToWorkerDuration := t4.Sub(t3)
+	h.metrics.RecordLatency(constant.SegmentGatewayToWorker, constant.ProtocolREST, gatewayToWorkerDuration)
+	h.metrics.RecordThroughput(constant.SegmentGatewayToWorker, constant.ProtocolREST, int64(len(data)), gatewayToWorkerDuration)
 
 	filename := c.Request.Header.Get("X-Video-Filename")
 	videoData := model.VideoData{
@@ -45,14 +58,14 @@ func (h *VideoHandler) HandleProcess(c *gin.Context) {
 
 	result, err := h.svc.Process(c.Request.Context(), videoData)
 	if err != nil {
-		res := response.BuildError(c.Request.Context(), err)
-		c.JSON(res.Status, res.Body)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	// t5: worker starts sending results to gateway
 	t5 := time.Now()
 
+	c.Header(timing.HeaderTimestamp, timing.EncodeTimestamp(t5))
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Transfer-Encoding", "chunked")
 	c.Status(http.StatusOK)
@@ -73,18 +86,4 @@ func (h *VideoHandler) HandleProcess(c *gin.Context) {
 		})
 		c.Writer.Flush()
 	}
-
-	// record t5 → t6 duration (t6 recorded by gateway when it finishes receiving)
-	workerToGatewayDuration := time.Since(t5)
-	h.metrics.RecordLatency(constant.SegmentWorkerToGateway, constant.ProtocolREST, workerToGatewayDuration)
-	h.metrics.RecordThroughput(constant.SegmentWorkerToGateway, constant.ProtocolREST, int64(totalSize(result)), workerToGatewayDuration)
-}
-
-// totalSize calculates the total bytes of all transcoded outputs.
-func totalSize(result *model.TranscodeResult) int {
-	total := 0
-	for _, o := range result.Outputs {
-		total += len(o.Data)
-	}
-	return total
 }

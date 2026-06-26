@@ -5,12 +5,15 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/service"
 	pb "github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gen/video"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 const chunkSize = 32 * 1024 // 32KB per chunk
@@ -29,15 +32,17 @@ func NewGrpcWorkerClient(workerAddr string) (service.WorkerClient, error) {
 	return &GrpcWorkerClient{stub: pb.NewWorkerServiceClient(conn)}, nil
 }
 
-// ProcessVideo streams the video payload to the worker and collects transcoded output chunks.
-// It sends all video chunks first, then receives all result chunks from the worker.
-func (c *GrpcWorkerClient) ProcessVideo(ctx context.Context, payload model.VideoPayload) (*model.TranscodeResult, error) {
+// ProcessVideo streams the video payload to the worker, carrying t3 as outgoing metadata.
+// It reads t5 back as header metadata from the worker before collecting result chunks.
+func (c *GrpcWorkerClient) ProcessVideo(ctx context.Context, payload model.VideoPayload, t3 time.Time) (*model.TranscodeResult, time.Time, error) {
+	md := metadata.Pairs(timing.HeaderTimestamp, timing.EncodeTimestamp(t3))
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
 	stream, err := c.stub.ProcessVideo(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open worker stream: %w", err)
+		return nil, time.Time{}, fmt.Errorf("failed to open worker stream: %w", err)
 	}
 
-	// send video chunks to worker
 	data := payload.Data
 	for len(data) > 0 {
 		size := chunkSize
@@ -50,23 +55,24 @@ func (c *GrpcWorkerClient) ProcessVideo(ctx context.Context, payload model.Video
 			Filename: payload.Filename,
 			Done:     false,
 		}); err != nil {
-			return nil, fmt.Errorf("failed to send chunk: %w", err)
+			return nil, time.Time{}, fmt.Errorf("failed to send chunk: %w", err)
 		}
 		data = data[size:]
 	}
 
-	// send done signal
 	if err := stream.Send(&pb.VideoChunk{Done: true}); err != nil {
-		return nil, fmt.Errorf("failed to send done signal: %w", err)
+		return nil, time.Time{}, fmt.Errorf("failed to send done signal: %w", err)
 	}
 
-	// close send side and receive results
 	if err := stream.CloseSend(); err != nil {
-		return nil, fmt.Errorf("failed to close send stream: %w", err)
+		return nil, time.Time{}, fmt.Errorf("failed to close send stream: %w", err)
 	}
 
 	result := &model.TranscodeResult{}
 	currentOutputs := make(map[string]*model.ResolutionOutput)
+
+	var t5 time.Time
+	t5Read := false
 
 	for {
 		chunk, err := stream.Recv()
@@ -74,7 +80,23 @@ func (c *GrpcWorkerClient) ProcessVideo(ctx context.Context, payload model.Video
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("failed to receive result chunk: %w", err)
+			return nil, time.Time{}, fmt.Errorf("failed to receive result chunk: %w", err)
+		}
+
+		if !t5Read {
+			headerMD, err := stream.Header()
+			if err != nil {
+				return nil, time.Time{}, fmt.Errorf("failed to read header metadata: %w", err)
+			}
+			t5Vals := headerMD.Get(timing.HeaderTimestamp)
+			if len(t5Vals) == 0 {
+				return nil, time.Time{}, fmt.Errorf("missing timestamp in worker header metadata")
+			}
+			t5, err = timing.DecodeTimestamp(t5Vals[0])
+			if err != nil {
+				return nil, time.Time{}, fmt.Errorf("invalid timestamp in worker header metadata: %w", err)
+			}
+			t5Read = true
 		}
 
 		if chunk.Done {
@@ -93,5 +115,5 @@ func (c *GrpcWorkerClient) ProcessVideo(ctx context.Context, payload model.Video
 		currentOutputs[chunk.Resolution].Data = append(currentOutputs[chunk.Resolution].Data, chunk.Data...)
 	}
 
-	return result, nil
+	return result, t5, nil
 }

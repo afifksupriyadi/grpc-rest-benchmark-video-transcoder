@@ -26,20 +26,34 @@ func NewVideoService(workerClient WorkerClient, metrics metrics.MetricsRecorder)
 }
 
 // Transcode forwards the video payload to the worker and returns the transcoded result.
-// It records t3 before forwarding and t6 after receiving the result for metrics measurement.
+// t3 is recorded here and passed to the worker so it can compute SegmentGatewayToWorker locally.
+// t5 is received back from the worker so SegmentWorkerToGateway can be computed here at t6.
 func (s *VideoServiceImpl) Transcode(ctx context.Context, payload model.VideoPayload) (*model.TranscodeResult, error) {
 	protocol := contextutil.GetProtocol(ctx)
 
+	// t3: gateway starts sending to worker
 	t3 := time.Now()
-	result, err := s.workerClient.ProcessVideo(ctx, payload)
+
+	result, t5, err := s.workerClient.ProcessVideo(ctx, payload, t3)
 	if err != nil {
 		return nil, response.WrapAppError(ctx, err, response.ErrWorkerUnavailable, "worker failed to process video")
 	}
+
+	// t6: gateway finishes receiving from worker
 	t6 := time.Now()
 
-	gatewayToWorkerDuration := t6.Sub(t3)
-	s.metrics.RecordLatency(constant.SegmentGatewayToWorker, protocol, gatewayToWorkerDuration)
-	s.metrics.RecordThroughput(constant.SegmentGatewayToWorker, protocol, int64(len(payload.Data)), gatewayToWorkerDuration)
+	workerToGatewayDuration := t6.Sub(t5)
+	s.metrics.RecordLatency(constant.SegmentWorkerToGateway, protocol, workerToGatewayDuration)
+	s.metrics.RecordThroughput(constant.SegmentWorkerToGateway, protocol, int64(totalSize(result)), workerToGatewayDuration)
 
 	return result, nil
+}
+
+// totalSize calculates the total bytes of all transcoded outputs.
+func totalSize(result *model.TranscodeResult) int {
+	total := 0
+	for _, o := range result.Outputs {
+		total += len(o.Data)
+	}
+	return total
 }

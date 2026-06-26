@@ -1,3 +1,4 @@
+// Package rest provides a REST implementation of the WorkerClient interface.
 package rest
 
 import (
@@ -8,10 +9,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/service"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/lib/httpclient"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
 )
 
 // RestWorkerClient implements service.WorkerClient using HTTP REST.
@@ -28,25 +31,40 @@ func NewRestWorkerClient(httpClient httpclient.Client, workerURL string) service
 	}
 }
 
-// ProcessVideo sends the video payload to the worker via HTTP POST and reads the chunked response.
-// It reads ChunkHeader JSON lines before each binary chunk to identify the resolution and size.
-func (c *RestWorkerClient) ProcessVideo(ctx context.Context, payload model.VideoPayload) (*model.TranscodeResult, error) {
+// ProcessVideo sends the video payload to the worker via HTTP POST, carrying t3 in the request header.
+// It reads t5 back from the response header before parsing the chunked body.
+func (c *RestWorkerClient) ProcessVideo(ctx context.Context, payload model.VideoPayload, t3 time.Time) (*model.TranscodeResult, time.Time, error) {
 	req := &httpclient.Request{
 		Method: http.MethodPost,
 		URL:    fmt.Sprintf("http://%s/v1/process", c.workerURL),
 		Headers: map[string]string{
-			"Content-Type":     "application/octet-stream",
-			"X-Video-Filename": payload.Filename,
+			"Content-Type":         "application/octet-stream",
+			"X-Video-Filename":     payload.Filename,
+			timing.HeaderTimestamp: timing.EncodeTimestamp(t3),
 		},
 		Body: payload.Data,
 	}
 
 	resp, err := c.httpClient.Do(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("worker request failed: %w", err)
+		return nil, time.Time{}, fmt.Errorf("worker request failed: %w", err)
 	}
 
-	return parseChunkedResponse(resp.Body)
+	t5Str, ok := resp.Headers[timing.HeaderTimestamp]
+	if !ok {
+		return nil, time.Time{}, fmt.Errorf("missing timestamp header in worker response")
+	}
+	t5, err := timing.DecodeTimestamp(t5Str)
+	if err != nil {
+		return nil, time.Time{}, fmt.Errorf("invalid timestamp header in worker response: %w", err)
+	}
+
+	result, err := parseChunkedResponse(resp.Body)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+
+	return result, t5, nil
 }
 
 // parseChunkedResponse reads the chunked streaming response from the worker.
@@ -56,7 +74,6 @@ func parseChunkedResponse(body []byte) (*model.TranscodeResult, error) {
 	result := &model.TranscodeResult{}
 
 	for {
-		// read JSON header line (json.Encoder.Encode always appends \n)
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
 			if err == io.EOF {
@@ -74,7 +91,6 @@ func parseChunkedResponse(body []byte) (*model.TranscodeResult, error) {
 			continue
 		}
 
-		// read binary data exactly Size bytes
 		data := make([]byte, header.Size)
 		if _, err := io.ReadFull(reader, data); err != nil {
 			return nil, fmt.Errorf("failed to read chunk data for %s: %w", header.Resolution, err)

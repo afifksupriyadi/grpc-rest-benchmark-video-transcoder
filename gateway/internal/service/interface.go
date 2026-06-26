@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/model"
 )
@@ -14,6 +15,8 @@ type VideoService interface {
 
 // WorkerClient defines the contract for communicating with the worker service.
 // It is implemented by both REST and gRPC worker clients.
+// t3 is passed in so the worker can compute SegmentGatewayToWorker locally.
+// t5 is returned so the service can compute SegmentWorkerToGateway.
 type WorkerClient interface {
-	ProcessVideo(ctx context.Context, payload model.VideoPayload) (*model.TranscodeResult, error)
+	ProcessVideo(ctx context.Context, payload model.VideoPayload, t3 time.Time) (result *model.TranscodeResult, t5 time.Time, err error)
 }

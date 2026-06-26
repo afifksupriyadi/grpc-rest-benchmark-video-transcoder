@@ -112,7 +112,7 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 
 	gatewayToClientDuration := t8.Sub(t7)
 	s.metrics.RecordLatency(constant.SegmentGatewayToClient, constant.ProtocolGRPC, gatewayToClientDuration)
-	s.metrics.RecordThroughput(constant.SegmentGatewayToClient, constant.ProtocolGRPC, int64(len(payload.Data)), gatewayToClientDuration)
+	s.metrics.RecordThroughput(constant.SegmentGatewayToClient, constant.ProtocolGRPC, int64(totalSize(result)), gatewayToClientDuration)
 
 	return nil
 }
@@ -123,4 +123,13 @@ func (s *VideoServer) CheckStatus(ctx context.Context, req *pb.StatusRequest) (*
 		Status:  "ok",
 		Message: "gateway is running",
 	}, nil
+}
+
+// totalSize calculates the total bytes of all transcoded outputs.
+func totalSize(result *model.TranscodeResult) int {
+	total := 0
+	for _, o := range result.Outputs {
+		total += len(o.Data)
+	}
+	return total
 }
