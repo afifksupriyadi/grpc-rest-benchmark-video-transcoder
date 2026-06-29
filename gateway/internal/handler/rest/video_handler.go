@@ -15,6 +15,7 @@ import (
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/lib/metrics"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/resource"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
 	"github.com/gin-gonic/gin"
 )
 
@@ -35,9 +36,19 @@ func NewVideoHandler(svc service.VideoService, metrics metrics.MetricsRecorder, 
 // to compute per-request CPU and memory usage for the gateway's own segments
 // (client_to_gateway and gateway_to_client).
 func (h *VideoHandler) HandleTranscode(c *gin.Context) {
-	// t1: client starts sending to gateway
-	t1 := time.Now()
+	// snapT1 is taken at gateway receive-start for CPU/RAM measurement of Segment 1,
+	// independent of the client's t1 clock.
 	snapT1, errSnapT1 := resource.Read()
+
+	// t1: client records before sending; read from X-Timestamp request header so
+	// Segment 1 latency (t2-t1) uses the same reference point as the gRPC path.
+	t1Str := c.Request.Header.Get(timing.HeaderTimestamp)
+	t1, err := timing.DecodeTimestamp(t1Str)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.BuildError(c.Request.Context(),
+			response.WrapAppError(c.Request.Context(), err, response.ErrInvalidRequest, "missing or invalid X-Timestamp request header")))
+		return
+	}
 
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.cfg.MaxFileSizeBytes)
 	data, err := io.ReadAll(c.Request.Body)
@@ -84,6 +95,7 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Transfer-Encoding", "chunked")
+	c.Header(timing.HeaderTimestamp, timing.EncodeTimestamp(t7))
 	c.Status(http.StatusOK)
 
 	for _, output := range result.Outputs {
@@ -115,13 +127,4 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 		avgMemory := float64(snapT7.MemoryBytes+snapSendEnd.MemoryBytes) / 2
 		h.metrics.RecordMemory(constant.SegmentGatewayToClient, constant.ProtocolREST, avgMemory)
 	}
-}
-
-// totalSize calculates the total bytes of all transcoded outputs.
-func totalSize(result *model.TranscodeResult) int {
-	total := 0
-	for _, o := range result.Outputs {
-		total += len(o.Data)
-	}
-	return total
 }

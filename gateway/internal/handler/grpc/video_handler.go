@@ -3,6 +3,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	pb "github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gen/video"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/resource"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
+	"google.golang.org/grpc/metadata"
 )
 
 const chunkSize = 32 * 1024 // 32KB per chunk
@@ -31,14 +34,22 @@ func NewVideoServer(svc service.VideoService, metrics metrics.MetricsRecorder) *
 }
 
 // TranscodeVideo receives a video stream from the client, transcodes it, and streams results back.
-// It also reads CPU/memory snapshots at t1, t2, t7, and after sending completes,
-// to compute per-request CPU and memory usage for the gateway's own segments.
+// It reads t1 from incoming metadata (sent by client before opening the stream),
+// and sets t7 as outgoing header metadata before sending the first result chunk.
 func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServer) error {
+	md, ok := metadata.FromIncomingContext(stream.Context())
+	if !ok || len(md.Get(timing.HeaderTimestamp)) == 0 {
+		return errors.New("missing timestamp metadata")
+	}
+	t1, err := timing.DecodeTimestamp(md.Get(timing.HeaderTimestamp)[0])
+	if err != nil {
+		return err
+	}
+
+	snapT1, errSnapT1 := resource.Read()
+
 	var (
 		payload    model.VideoPayload
-		t1         time.Time
-		snapT1     resource.Snapshot
-		errSnapT1  error
 		firstChunk = true
 	)
 
@@ -51,16 +62,13 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 			return err
 		}
 
-		if firstChunk {
-			// t1: client starts sending to gateway
-			t1 = time.Now()
-			snapT1, errSnapT1 = resource.Read()
-			payload.Filename = chunk.Filename
-			firstChunk = false
-		}
-
 		if chunk.Done {
 			break
+		}
+
+		if firstChunk {
+			payload.Filename = chunk.Filename
+			firstChunk = false
 		}
 
 		payload.Data = append(payload.Data, chunk.Data...)
@@ -93,13 +101,15 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 	t7 := time.Now()
 	snapT7, errSnapT7 := resource.Read()
 
+	headerMD := metadata.Pairs(timing.HeaderTimestamp, timing.EncodeTimestamp(t7))
+	if err := stream.SetHeader(headerMD); err != nil {
+		return err
+	}
+
 	for _, output := range result.Outputs {
 		data := output.Data
 		for len(data) > 0 {
-			size := chunkSize
-			if len(data) < size {
-				size = len(data)
-			}
+			size := min(chunkSize, len(data))
 
 			if err := stream.Send(&pb.TranscodeChunk{
 				Resolution: output.Resolution,
@@ -141,13 +151,4 @@ func (s *VideoServer) CheckStatus(ctx context.Context, req *pb.StatusRequest) (*
 		Status:  "ok",
 		Message: "gateway is running",
 	}, nil
-}
-
-// totalSize calculates the total bytes of all transcoded outputs.
-func totalSize(result *model.TranscodeResult) int {
-	total := 0
-	for _, o := range result.Outputs {
-		total += len(o.Data)
-	}
-	return total
 }

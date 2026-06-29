@@ -10,7 +10,15 @@ const (
 
 // FFmpegResolutionScales maps resolution labels to ffmpeg scale filter values.
 var FFmpegResolutionScales = map[string]string{
-	Resolution720p: "1280:720", // 720p scale
-	Resolution480p: "854:480",  // 480p scale
-	Resolution360p: "640:360",  // 360p scale
+	Resolution720p: "1280:720",
+	Resolution480p: "854:480",
+	Resolution360p: "640:360",
+}
+
+// FFmpegResolutionHeights maps resolution labels to their pixel heights.
+// Used to filter out resolutions that are not lower than the input video's height.
+var FFmpegResolutionHeights = map[string]int{
+	Resolution720p: 720,
+	Resolution480p: 480,
+	Resolution360p: 360,
 }
