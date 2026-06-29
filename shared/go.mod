@@ -2,7 +2,10 @@ module github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared
 
 go 1.25.1
 
-require google.golang.org/grpc v1.80.0
+require (
+	github.com/prometheus/procfs v0.20.1
+	google.golang.org/grpc v1.80.0
+)
 
 require (
 	golang.org/x/net v0.51.0 // indirect

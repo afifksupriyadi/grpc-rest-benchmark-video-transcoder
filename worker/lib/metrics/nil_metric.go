@@ -17,3 +17,9 @@ func (n *NilMetricsRecorder) RecordLatency(segment string, protocol string, dura
 // RecordThroughput does nothing.
 func (n *NilMetricsRecorder) RecordThroughput(segment string, protocol string, bytes int64, duration time.Duration) {
 }
+
+// RecordCPU does nothing.
+func (n *NilMetricsRecorder) RecordCPU(segment string, protocol string, usage float64) {}
+
+// RecordMemory does nothing.
+func (n *NilMetricsRecorder) RecordMemory(segment string, protocol string, bytes float64) {}

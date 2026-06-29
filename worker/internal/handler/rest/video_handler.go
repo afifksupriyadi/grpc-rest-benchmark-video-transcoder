@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/resource"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/constant"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/model"
@@ -28,7 +29,8 @@ func NewVideoHandler(svc service.VideoService, metrics metrics.MetricsRecorder) 
 
 // HandleProcess receives a raw video upload from gateway, processes it, and streams results back.
 // It reads t3 from the request header to compute SegmentGatewayToWorker locally.
-// It sets t5 in the response header before streaming results back.
+// It also reads CPU/memory snapshots at t3, t4, t5, and after sending completes,
+// to compute per-request CPU and memory usage, excluding the FFmpeg phase entirely.
 func (h *VideoHandler) HandleProcess(c *gin.Context) {
 	t3Str := c.Request.Header.Get(timing.HeaderTimestamp)
 	t3, err := timing.DecodeTimestamp(t3Str)
@@ -36,6 +38,8 @@ func (h *VideoHandler) HandleProcess(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing or invalid timestamp header"})
 		return
 	}
+
+	snapT3, errSnapT3 := resource.Read()
 
 	data, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -45,6 +49,7 @@ func (h *VideoHandler) HandleProcess(c *gin.Context) {
 
 	// t4: worker finishes receiving from gateway
 	t4 := time.Now()
+	snapT4, errSnapT4 := resource.Read()
 
 	gatewayToWorkerDuration := t4.Sub(t3)
 	h.metrics.RecordLatency(constant.SegmentGatewayToWorker, constant.ProtocolREST, gatewayToWorkerDuration)
@@ -64,6 +69,7 @@ func (h *VideoHandler) HandleProcess(c *gin.Context) {
 
 	// t5: worker starts sending results to gateway
 	t5 := time.Now()
+	snapT5, errSnapT5 := resource.Read()
 
 	c.Header(timing.HeaderTimestamp, timing.EncodeTimestamp(t5))
 	c.Header("Content-Type", "application/octet-stream")
@@ -86,4 +92,41 @@ func (h *VideoHandler) HandleProcess(c *gin.Context) {
 		})
 		c.Writer.Flush()
 	}
+
+	// snapshot after sending completes, used as the end point of the send phase
+	sendEndDuration := time.Since(t5)
+	snapSendEnd, errSnapSendEnd := resource.Read()
+
+	if errSnapT3 != nil || errSnapT4 != nil || errSnapT5 != nil || errSnapSendEnd != nil {
+		// resource read failed at one or more points; skip CPU/RAM recording for this request
+		return
+	}
+
+	recordCPUAndMemory(h.metrics, constant.SegmentGatewayToWorker, constant.ProtocolREST,
+		snapT3, snapT4, snapT5, snapSendEnd, gatewayToWorkerDuration, sendEndDuration)
+}
+
+// recordCPUAndMemory computes per-request CPU and memory usage from four snapshots,
+// combining the receive phase (t3 to t4) and send phase (t5 to send-end) while
+// excluding the FFmpeg phase (t4 to t5) entirely, then records one CPU and one
+// memory value for the request.
+func recordCPUAndMemory(
+	m metrics.MetricsRecorder,
+	segment string,
+	protocol string,
+	snapT3, snapT4, snapT5, snapSendEnd resource.Snapshot,
+	receiveDuration, sendDuration time.Duration,
+) {
+	cpuDeltaReceive := snapT4.CPUSeconds - snapT3.CPUSeconds
+	cpuDeltaSend := snapSendEnd.CPUSeconds - snapT5.CPUSeconds
+
+	totalCPUDelta := cpuDeltaReceive + cpuDeltaSend
+	totalDuration := receiveDuration.Seconds() + sendDuration.Seconds()
+
+	if totalDuration > 0 {
+		m.RecordCPU(segment, protocol, totalCPUDelta/totalDuration)
+	}
+
+	avgMemory := float64(snapT3.MemoryBytes+snapT4.MemoryBytes+snapT5.MemoryBytes+snapSendEnd.MemoryBytes) / 4
+	m.RecordMemory(segment, protocol, avgMemory)
 }
