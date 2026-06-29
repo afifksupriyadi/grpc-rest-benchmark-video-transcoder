@@ -123,9 +123,6 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 	gatewayToClientDuration := time.Since(t7)
 	snapSendEnd, errSnapSendEnd := resource.Read()
 
-	s.metrics.RecordLatency(constant.SegmentGatewayToClient, constant.ProtocolGRPC, gatewayToClientDuration)
-	s.metrics.RecordThroughput(constant.SegmentGatewayToClient, constant.ProtocolGRPC, int64(totalSize(result)), gatewayToClientDuration)
-
 	if errSnapT7 == nil && errSnapSendEnd == nil {
 		cpuDelta := snapSendEnd.CPUSeconds - snapT7.CPUSeconds
 		if gatewayToClientDuration.Seconds() > 0 {

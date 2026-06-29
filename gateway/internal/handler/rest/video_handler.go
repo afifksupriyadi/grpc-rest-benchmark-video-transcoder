@@ -107,9 +107,6 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 	gatewayToClientDuration := time.Since(t7)
 	snapSendEnd, errSnapSendEnd := resource.Read()
 
-	h.metrics.RecordLatency(constant.SegmentGatewayToClient, constant.ProtocolREST, gatewayToClientDuration)
-	h.metrics.RecordThroughput(constant.SegmentGatewayToClient, constant.ProtocolREST, int64(totalSize(result)), gatewayToClientDuration)
-
 	if errSnapT7 == nil && errSnapSendEnd == nil {
 		cpuDelta := snapSendEnd.CPUSeconds - snapT7.CPUSeconds
 		if gatewayToClientDuration.Seconds() > 0 {

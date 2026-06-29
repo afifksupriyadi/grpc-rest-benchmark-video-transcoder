@@ -45,8 +45,10 @@ func main() {
 	// start REST server
 	go func() {
 		restHandler := resthandler.NewVideoHandler(restVideoSvc, metricsRecorder, cfg)
+		metricHandler := resthandler.NewMetricHandler(metricsRecorder)
+
 		r := gin.Default()
-		resthandler.RegisterRoutes(r, restHandler)
+		resthandler.RegisterRoutes(r, restHandler, metricHandler)
 		addr := fmt.Sprintf(":%d", cfg.RESTPort)
 		log.Printf("REST server listening on %s", addr)
 		if err := r.Run(addr); err != nil {
