@@ -13,6 +13,7 @@ import (
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/service"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/util/contextutil"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/lib/metrics"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/resource"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
 	"github.com/gin-gonic/gin"
 )
@@ -24,17 +25,19 @@ type VideoHandler struct {
 	cfg     *config.Config
 }
 
-// NewVideoHandler creates a new VideoHandler with the given service and metrics recorder.
+// NewVideoHandler creates a new VideoHandler with the given service, metrics recorder, and config.
 func NewVideoHandler(svc service.VideoService, metrics metrics.MetricsRecorder, cfg *config.Config) *VideoHandler {
 	return &VideoHandler{svc: svc, metrics: metrics, cfg: cfg}
 }
 
 // HandleTranscode receives a video upload, forwards it for transcoding, and streams the result back.
-// It records t1 on request received and t2 after reading the full request body.
-// It records t7 before streaming response and t8 after streaming completes.
+// It also reads CPU/memory snapshots at t1, t2, t7, and after sending completes,
+// to compute per-request CPU and memory usage for the gateway's own segments
+// (client_to_gateway and gateway_to_client).
 func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 	// t1: client starts sending to gateway
 	t1 := time.Now()
+	snapT1, errSnapT1 := resource.Read()
 
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.cfg.MaxFileSizeBytes)
 	data, err := io.ReadAll(c.Request.Body)
@@ -43,15 +46,25 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 			response.WrapAppError(c.Request.Context(), err, response.ErrInvalidRequest, "failed to read request body")))
 		return
 	}
-	filename := c.Request.Header.Get("X-Video-Filename")
 
 	// t2: gateway finishes receiving from client
 	t2 := time.Now()
+	snapT2, errSnapT2 := resource.Read()
 
 	clientToGatewayDuration := t2.Sub(t1)
 	h.metrics.RecordLatency(constant.SegmentClientToGateway, constant.ProtocolREST, clientToGatewayDuration)
 	h.metrics.RecordThroughput(constant.SegmentClientToGateway, constant.ProtocolREST, int64(len(data)), clientToGatewayDuration)
 
+	if errSnapT1 == nil && errSnapT2 == nil {
+		cpuDelta := snapT2.CPUSeconds - snapT1.CPUSeconds
+		if clientToGatewayDuration.Seconds() > 0 {
+			h.metrics.RecordCPU(constant.SegmentClientToGateway, constant.ProtocolREST, cpuDelta/clientToGatewayDuration.Seconds())
+		}
+		avgMemory := float64(snapT1.MemoryBytes+snapT2.MemoryBytes) / 2
+		h.metrics.RecordMemory(constant.SegmentClientToGateway, constant.ProtocolREST, avgMemory)
+	}
+
+	filename := c.Request.Header.Get("X-Video-Filename")
 	payload := model.VideoPayload{
 		Filename: filename,
 		Data:     data,
@@ -67,6 +80,7 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 
 	// t7: gateway starts sending to client
 	t7 := time.Now()
+	snapT7, errSnapT7 := resource.Read()
 
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Transfer-Encoding", "chunked")
@@ -89,12 +103,21 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 		c.Writer.Flush()
 	}
 
-	// t8: gateway finishes sending to client
-	t8 := time.Now()
+	// snapshot after sending completes, used as the end point of the send phase
+	gatewayToClientDuration := time.Since(t7)
+	snapSendEnd, errSnapSendEnd := resource.Read()
 
-	gatewayToClientDuration := t8.Sub(t7)
 	h.metrics.RecordLatency(constant.SegmentGatewayToClient, constant.ProtocolREST, gatewayToClientDuration)
 	h.metrics.RecordThroughput(constant.SegmentGatewayToClient, constant.ProtocolREST, int64(totalSize(result)), gatewayToClientDuration)
+
+	if errSnapT7 == nil && errSnapSendEnd == nil {
+		cpuDelta := snapSendEnd.CPUSeconds - snapT7.CPUSeconds
+		if gatewayToClientDuration.Seconds() > 0 {
+			h.metrics.RecordCPU(constant.SegmentGatewayToClient, constant.ProtocolREST, cpuDelta/gatewayToClientDuration.Seconds())
+		}
+		avgMemory := float64(snapT7.MemoryBytes+snapSendEnd.MemoryBytes) / 2
+		h.metrics.RecordMemory(constant.SegmentGatewayToClient, constant.ProtocolREST, avgMemory)
+	}
 }
 
 // totalSize calculates the total bytes of all transcoded outputs.

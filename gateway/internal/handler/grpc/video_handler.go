@@ -12,6 +12,7 @@ import (
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/util/contextutil"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/lib/metrics"
 	pb "github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gen/video"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/resource"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
 )
 
@@ -30,16 +31,17 @@ func NewVideoServer(svc service.VideoService, metrics metrics.MetricsRecorder) *
 }
 
 // TranscodeVideo receives a video stream from the client, transcodes it, and streams results back.
-// It records t1 on first chunk received and t2 after all chunks are received.
-// It records t7 before streaming response and t8 after streaming completes.
+// It also reads CPU/memory snapshots at t1, t2, t7, and after sending completes,
+// to compute per-request CPU and memory usage for the gateway's own segments.
 func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServer) error {
 	var (
 		payload    model.VideoPayload
 		t1         time.Time
+		snapT1     resource.Snapshot
+		errSnapT1  error
 		firstChunk = true
 	)
 
-	// receive all chunks from client
 	for {
 		chunk, err := stream.Recv()
 		if err == io.EOF {
@@ -52,6 +54,7 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 		if firstChunk {
 			// t1: client starts sending to gateway
 			t1 = time.Now()
+			snapT1, errSnapT1 = resource.Read()
 			payload.Filename = chunk.Filename
 			firstChunk = false
 		}
@@ -65,10 +68,20 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 
 	// t2: gateway finishes receiving from client
 	t2 := time.Now()
+	snapT2, errSnapT2 := resource.Read()
 
 	clientToGatewayDuration := t2.Sub(t1)
 	s.metrics.RecordLatency(constant.SegmentClientToGateway, constant.ProtocolGRPC, clientToGatewayDuration)
 	s.metrics.RecordThroughput(constant.SegmentClientToGateway, constant.ProtocolGRPC, int64(len(payload.Data)), clientToGatewayDuration)
+
+	if errSnapT1 == nil && errSnapT2 == nil {
+		cpuDelta := snapT2.CPUSeconds - snapT1.CPUSeconds
+		if clientToGatewayDuration.Seconds() > 0 {
+			s.metrics.RecordCPU(constant.SegmentClientToGateway, constant.ProtocolGRPC, cpuDelta/clientToGatewayDuration.Seconds())
+		}
+		avgMemory := float64(snapT1.MemoryBytes+snapT2.MemoryBytes) / 2
+		s.metrics.RecordMemory(constant.SegmentClientToGateway, constant.ProtocolGRPC, avgMemory)
+	}
 
 	ctx := contextutil.SetProtocol(stream.Context(), constant.ProtocolGRPC)
 	result, err := s.svc.Transcode(ctx, payload)
@@ -78,8 +91,8 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 
 	// t7: gateway starts sending to client
 	t7 := time.Now()
+	snapT7, errSnapT7 := resource.Read()
 
-	// stream results back to client
 	for _, output := range result.Outputs {
 		data := output.Data
 		for len(data) > 0 {
@@ -98,7 +111,6 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 			data = data[size:]
 		}
 
-		// send done signal for this resolution
 		if err := stream.Send(&pb.TranscodeChunk{
 			Resolution: output.Resolution,
 			Done:       true,
@@ -107,12 +119,21 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 		}
 	}
 
-	// t8: gateway finishes sending to client
-	t8 := time.Now()
+	// snapshot after sending completes, used as the end point of the send phase
+	gatewayToClientDuration := time.Since(t7)
+	snapSendEnd, errSnapSendEnd := resource.Read()
 
-	gatewayToClientDuration := t8.Sub(t7)
 	s.metrics.RecordLatency(constant.SegmentGatewayToClient, constant.ProtocolGRPC, gatewayToClientDuration)
 	s.metrics.RecordThroughput(constant.SegmentGatewayToClient, constant.ProtocolGRPC, int64(totalSize(result)), gatewayToClientDuration)
+
+	if errSnapT7 == nil && errSnapSendEnd == nil {
+		cpuDelta := snapSendEnd.CPUSeconds - snapT7.CPUSeconds
+		if gatewayToClientDuration.Seconds() > 0 {
+			s.metrics.RecordCPU(constant.SegmentGatewayToClient, constant.ProtocolGRPC, cpuDelta/gatewayToClientDuration.Seconds())
+		}
+		avgMemory := float64(snapT7.MemoryBytes+snapSendEnd.MemoryBytes) / 2
+		s.metrics.RecordMemory(constant.SegmentGatewayToClient, constant.ProtocolGRPC, avgMemory)
+	}
 
 	return nil
 }

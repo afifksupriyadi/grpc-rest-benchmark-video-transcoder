@@ -7,4 +7,6 @@ import "time"
 type MetricsRecorder interface {
 	RecordLatency(segment string, protocol string, duration time.Duration)
 	RecordThroughput(segment string, protocol string, bytes int64, duration time.Duration)
+	RecordCPU(segment string, protocol string, usage float64)
+	RecordMemory(segment string, protocol string, bytes float64)
 }
