@@ -6,6 +6,7 @@ import (
 
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/lib/metrics"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
 	"github.com/gin-gonic/gin"
 )
 
@@ -28,9 +29,15 @@ func (h *MetricHandler) HandleReportMetric(c *gin.Context) {
 		return
 	}
 
+	labels := label.Labels{
+		Scenario:         req.Scenario,
+		PayloadSize:      req.PayloadSize,
+		ConcurrencyLevel: req.ConcurrencyLevel,
+	}
+
 	duration := time.Duration(req.DurationSeconds * float64(time.Second))
-	h.metrics.RecordLatency(req.Segment, req.Protocol, duration)
-	h.metrics.RecordThroughput(req.Segment, req.Protocol, req.Bytes, duration)
+	h.metrics.RecordLatency(req.Segment, req.Protocol, labels, duration)
+	h.metrics.RecordThroughput(req.Segment, req.Protocol, labels, req.Bytes, duration)
 
 	c.Status(http.StatusNoContent)
 }

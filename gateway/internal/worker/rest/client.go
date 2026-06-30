@@ -14,6 +14,7 @@ import (
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/service"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/lib/httpclient"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
 )
 
@@ -31,16 +32,20 @@ func NewRestWorkerClient(httpClient httpclient.Client, workerURL string) service
 	}
 }
 
-// ProcessVideo sends the video payload to the worker via HTTP POST, carrying t3 in the request header.
-// It reads t5 back from the response header before parsing the chunked body.
-func (c *RestWorkerClient) ProcessVideo(ctx context.Context, payload model.VideoPayload, t3 time.Time) (*model.TranscodeResult, time.Time, error) {
+// ProcessVideo sends the video payload to the worker via HTTP POST, carrying t3 and
+// scenario labels in the request headers. It reads t5 back from the response header
+// before parsing the chunked body.
+func (c *RestWorkerClient) ProcessVideo(ctx context.Context, payload model.VideoPayload, t3 time.Time, labels label.Labels) (*model.TranscodeResult, time.Time, error) {
 	req := &httpclient.Request{
 		Method: http.MethodPost,
 		URL:    fmt.Sprintf("http://%s/v1/process", c.workerURL),
 		Headers: map[string]string{
-			"Content-Type":         "application/octet-stream",
-			"X-Video-Filename":     payload.Filename,
-			timing.HeaderTimestamp: timing.EncodeTimestamp(t3),
+			"Content-Type":               "application/octet-stream",
+			"X-Video-Filename":           payload.Filename,
+			timing.HeaderTimestamp:       timing.EncodeTimestamp(t3),
+			label.HeaderScenario:         labels.Scenario,
+			label.HeaderPayloadSize:      labels.PayloadSize,
+			label.HeaderConcurrencyLevel: labels.ConcurrencyLevel,
 		},
 		Body: payload.Data,
 	}

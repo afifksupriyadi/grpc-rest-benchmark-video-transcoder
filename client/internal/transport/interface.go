@@ -6,12 +6,14 @@ import (
 	"time"
 
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/client/internal/model"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
 )
 
 // GatewayClient defines the contract for sending a video to gateway and receiving
 // the transcoded result back. t1 is passed in so it can be propagated to gateway.
+// labels carries scenario metadata to be propagated alongside the video.
 // t7 is returned, read from gateway's response, so the client can compute t8-t7
 // after it finishes receiving and saving the result.
 type GatewayClient interface {
-	Transcode(ctx context.Context, filename string, data []byte, t1 time.Time) (result *model.TranscodeResult, t7 time.Time, err error)
+	Transcode(ctx context.Context, filename string, data []byte, t1 time.Time, labels label.Labels) (result *model.TranscodeResult, t7 time.Time, err error)
 }

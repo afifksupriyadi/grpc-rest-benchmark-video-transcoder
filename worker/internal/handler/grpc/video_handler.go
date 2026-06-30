@@ -7,6 +7,7 @@ import (
 	"time"
 
 	pb "github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gen/video"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/resource"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/constant"
@@ -31,9 +32,10 @@ func NewVideoServer(svc service.VideoService, metrics metrics.MetricsRecorder) *
 }
 
 // ProcessVideo receives a video stream from gateway, processes it, and streams results back.
-// It reads t3 from incoming metadata to compute SegmentGatewayToWorker locally.
-// It also reads CPU/memory snapshots at t3, t4, t5, and after sending completes,
-// to compute per-request CPU and memory usage, excluding the FFmpeg phase entirely.
+// It reads t3 and scenario labels from incoming metadata sent by gateway, to compute
+// SegmentGatewayToWorker locally. It also reads CPU/memory snapshots at t3, t4, t5, and
+// after sending completes, to compute per-request CPU and memory usage, excluding the
+// FFmpeg phase entirely.
 func (s *VideoServer) ProcessVideo(stream pb.WorkerService_ProcessVideoServer) error {
 	md, ok := metadata.FromIncomingContext(stream.Context())
 	if !ok || len(md.Get(timing.HeaderTimestamp)) == 0 {
@@ -42,6 +44,12 @@ func (s *VideoServer) ProcessVideo(stream pb.WorkerService_ProcessVideoServer) e
 	t3, err := timing.DecodeTimestamp(md.Get(timing.HeaderTimestamp)[0])
 	if err != nil {
 		return err
+	}
+
+	labels := label.Labels{
+		Scenario:         getMetadataValue(md, label.HeaderScenario),
+		PayloadSize:      getMetadataValue(md, label.HeaderPayloadSize),
+		ConcurrencyLevel: getMetadataValue(md, label.HeaderConcurrencyLevel),
 	}
 
 	snapT3, errSnapT3 := resource.Read()
@@ -77,8 +85,8 @@ func (s *VideoServer) ProcessVideo(stream pb.WorkerService_ProcessVideoServer) e
 	snapT4, errSnapT4 := resource.Read()
 
 	gatewayToWorkerDuration := t4.Sub(t3)
-	s.metrics.RecordLatency(constant.SegmentGatewayToWorker, constant.ProtocolGRPC, gatewayToWorkerDuration)
-	s.metrics.RecordThroughput(constant.SegmentGatewayToWorker, constant.ProtocolGRPC, int64(len(videoData.Data)), gatewayToWorkerDuration)
+	s.metrics.RecordLatency(constant.SegmentGatewayToWorker, constant.ProtocolGRPC, labels, gatewayToWorkerDuration)
+	s.metrics.RecordThroughput(constant.SegmentGatewayToWorker, constant.ProtocolGRPC, labels, int64(len(videoData.Data)), gatewayToWorkerDuration)
 
 	result, err := s.svc.Process(stream.Context(), videoData)
 	if err != nil {
@@ -128,7 +136,7 @@ func (s *VideoServer) ProcessVideo(stream pb.WorkerService_ProcessVideoServer) e
 		return nil
 	}
 
-	recordCPUAndMemory(s.metrics, constant.SegmentGatewayToWorker, constant.ProtocolGRPC,
+	recordCPUAndMemory(s.metrics, constant.SegmentGatewayToWorker, constant.ProtocolGRPC, labels,
 		snapT3, snapT4, snapT5, snapSendEnd, gatewayToWorkerDuration, sendEndDuration)
 
 	return nil
@@ -142,6 +150,7 @@ func recordCPUAndMemory(
 	m metrics.MetricsRecorder,
 	segment string,
 	protocol string,
+	labels label.Labels,
 	snapT3, snapT4, snapT5, snapSendEnd resource.Snapshot,
 	receiveDuration, sendDuration time.Duration,
 ) {
@@ -152,9 +161,19 @@ func recordCPUAndMemory(
 	totalDuration := receiveDuration.Seconds() + sendDuration.Seconds()
 
 	if totalDuration > 0 {
-		m.RecordCPU(segment, protocol, totalCPUDelta/totalDuration)
+		m.RecordCPU(segment, protocol, labels, totalCPUDelta/totalDuration)
 	}
 
 	avgMemory := float64(snapT3.MemoryBytes+snapT4.MemoryBytes+snapT5.MemoryBytes+snapSendEnd.MemoryBytes) / 4
-	m.RecordMemory(segment, protocol, avgMemory)
+	m.RecordMemory(segment, protocol, labels, avgMemory)
+}
+
+// getMetadataValue safely extracts the first value for a metadata key, returning
+// an empty string if the key is absent.
+func getMetadataValue(md metadata.MD, key string) string {
+	vals := md.Get(key)
+	if len(vals) == 0 {
+		return ""
+	}
+	return vals[0]
 }

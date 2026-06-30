@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/resource"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/worker/internal/constant"
@@ -28,15 +29,22 @@ func NewVideoHandler(svc service.VideoService, metrics metrics.MetricsRecorder) 
 }
 
 // HandleProcess receives a raw video upload from gateway, processes it, and streams results back.
-// It reads t3 from the request header to compute SegmentGatewayToWorker locally.
-// It also reads CPU/memory snapshots at t3, t4, t5, and after sending completes,
-// to compute per-request CPU and memory usage, excluding the FFmpeg phase entirely.
+// It reads t3 and scenario labels from the request headers sent by gateway, to compute
+// SegmentGatewayToWorker locally. It also reads CPU/memory snapshots at t3, t4, t5, and
+// after sending completes, to compute per-request CPU and memory usage, excluding the
+// FFmpeg phase entirely.
 func (h *VideoHandler) HandleProcess(c *gin.Context) {
 	t3Str := c.Request.Header.Get(timing.HeaderTimestamp)
 	t3, err := timing.DecodeTimestamp(t3Str)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing or invalid timestamp header"})
 		return
+	}
+
+	labels := label.Labels{
+		Scenario:         c.Request.Header.Get(label.HeaderScenario),
+		PayloadSize:      c.Request.Header.Get(label.HeaderPayloadSize),
+		ConcurrencyLevel: c.Request.Header.Get(label.HeaderConcurrencyLevel),
 	}
 
 	snapT3, errSnapT3 := resource.Read()
@@ -52,8 +60,8 @@ func (h *VideoHandler) HandleProcess(c *gin.Context) {
 	snapT4, errSnapT4 := resource.Read()
 
 	gatewayToWorkerDuration := t4.Sub(t3)
-	h.metrics.RecordLatency(constant.SegmentGatewayToWorker, constant.ProtocolREST, gatewayToWorkerDuration)
-	h.metrics.RecordThroughput(constant.SegmentGatewayToWorker, constant.ProtocolREST, int64(len(data)), gatewayToWorkerDuration)
+	h.metrics.RecordLatency(constant.SegmentGatewayToWorker, constant.ProtocolREST, labels, gatewayToWorkerDuration)
+	h.metrics.RecordThroughput(constant.SegmentGatewayToWorker, constant.ProtocolREST, labels, int64(len(data)), gatewayToWorkerDuration)
 
 	filename := c.Request.Header.Get("X-Video-Filename")
 	videoData := model.VideoData{
@@ -102,7 +110,7 @@ func (h *VideoHandler) HandleProcess(c *gin.Context) {
 		return
 	}
 
-	recordCPUAndMemory(h.metrics, constant.SegmentGatewayToWorker, constant.ProtocolREST,
+	recordCPUAndMemory(h.metrics, constant.SegmentGatewayToWorker, constant.ProtocolREST, labels,
 		snapT3, snapT4, snapT5, snapSendEnd, gatewayToWorkerDuration, sendEndDuration)
 }
 
@@ -114,6 +122,7 @@ func recordCPUAndMemory(
 	m metrics.MetricsRecorder,
 	segment string,
 	protocol string,
+	labels label.Labels,
 	snapT3, snapT4, snapT5, snapSendEnd resource.Snapshot,
 	receiveDuration, sendDuration time.Duration,
 ) {
@@ -124,9 +133,9 @@ func recordCPUAndMemory(
 	totalDuration := receiveDuration.Seconds() + sendDuration.Seconds()
 
 	if totalDuration > 0 {
-		m.RecordCPU(segment, protocol, totalCPUDelta/totalDuration)
+		m.RecordCPU(segment, protocol, labels, totalCPUDelta/totalDuration)
 	}
 
 	avgMemory := float64(snapT3.MemoryBytes+snapT4.MemoryBytes+snapT5.MemoryBytes+snapSendEnd.MemoryBytes) / 4
-	m.RecordMemory(segment, protocol, avgMemory)
+	m.RecordMemory(segment, protocol, labels, avgMemory)
 }

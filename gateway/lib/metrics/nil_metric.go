@@ -1,6 +1,10 @@
 package metrics
 
-import "time"
+import (
+	"time"
+
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
+)
 
 // NilMetricsRecorder is a no-op implementation of MetricsRecorder used in testing.
 type NilMetricsRecorder struct{}
@@ -11,15 +15,17 @@ func NewNilMetricsRecorder() *NilMetricsRecorder {
 }
 
 // RecordLatency does nothing.
-func (n *NilMetricsRecorder) RecordLatency(segment string, protocol string, duration time.Duration) {
+func (n *NilMetricsRecorder) RecordLatency(segment string, protocol string, labels label.Labels, duration time.Duration) {
 }
 
 // RecordThroughput does nothing.
-func (n *NilMetricsRecorder) RecordThroughput(segment string, protocol string, bytes int64, duration time.Duration) {
+func (n *NilMetricsRecorder) RecordThroughput(segment string, protocol string, labels label.Labels, bytes int64, duration time.Duration) {
 }
 
 // RecordCPU does nothing.
-func (n *NilMetricsRecorder) RecordCPU(segment string, protocol string, usage float64) {}
+func (n *NilMetricsRecorder) RecordCPU(segment string, protocol string, labels label.Labels, usage float64) {
+}
 
 // RecordMemory does nothing.
-func (n *NilMetricsRecorder) RecordMemory(segment string, protocol string, bytes float64) {}
+func (n *NilMetricsRecorder) RecordMemory(segment string, protocol string, labels label.Labels, bytes float64) {
+}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/client/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/client/internal/transport"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
 )
 
@@ -30,9 +31,10 @@ func NewRestGatewayClient(gatewayAddr string, timeout time.Duration) transport.G
 	}
 }
 
-// Transcode sends the video to gateway via HTTP POST, carrying t1 in the request header.
-// It reads t7 back from the response header before parsing the chunked body.
-func (c *RestGatewayClient) Transcode(ctx context.Context, filename string, data []byte, t1 time.Time) (*model.TranscodeResult, time.Time, error) {
+// Transcode sends the video to gateway via HTTP POST, carrying t1 and scenario
+// labels in the request headers. It reads t7 back from the response header
+// before parsing the chunked body.
+func (c *RestGatewayClient) Transcode(ctx context.Context, filename string, data []byte, t1 time.Time, labels label.Labels) (*model.TranscodeResult, time.Time, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.gatewayURL+"/v1/transcode", bytes.NewReader(data))
 	if err != nil {
 		return nil, time.Time{}, fmt.Errorf("failed to build request: %w", err)
@@ -41,6 +43,9 @@ func (c *RestGatewayClient) Transcode(ctx context.Context, filename string, data
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("X-Video-Filename", filename)
 	req.Header.Set(timing.HeaderTimestamp, timing.EncodeTimestamp(t1))
+	req.Header.Set(label.HeaderScenario, labels.Scenario)
+	req.Header.Set(label.HeaderPayloadSize, labels.PayloadSize)
+	req.Header.Set(label.HeaderConcurrencyLevel, labels.ConcurrencyLevel)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

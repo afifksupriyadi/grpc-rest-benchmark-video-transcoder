@@ -19,12 +19,15 @@ import (
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/client/internal/transport"
 	grpctransport "github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/client/internal/transport/grpc"
 	resttransport "github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/client/internal/transport/rest"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
 )
 
 var (
-	protocolFlag string
-	inputFlag    string
-	outputFlag   string
+	protocolFlag         string
+	inputFlag            string
+	outputFlag           string
+	scenarioFlag         string
+	concurrencyLevelFlag string
 )
 
 // transcodeCmd sends a video file to the gateway for transcoding and saves the results locally.
@@ -41,6 +44,8 @@ func init() {
 	transcodeCmd.Flags().StringVarP(&protocolFlag, "protocol", "p", "", "protocol to use: rest or grpc (required)")
 	transcodeCmd.Flags().StringVarP(&inputFlag, "input", "i", "", "path to the input video file (required)")
 	transcodeCmd.Flags().StringVarP(&outputFlag, "output", "o", constant.DefaultOutputDir, "directory to save transcoded results")
+	transcodeCmd.Flags().StringVar(&scenarioFlag, "scenario", "", "research scenario identifier (e.g. scenario_a, scenario_b)")
+	transcodeCmd.Flags().StringVar(&concurrencyLevelFlag, "concurrency-level", "", "concurrency level label, only relevant for scenario_b (e.g. 20)")
 
 	if err := transcodeCmd.MarkFlagRequired("protocol"); err != nil {
 		panic(err)
@@ -68,6 +73,12 @@ func runTranscode(cmd *cobra.Command, args []string) error {
 	}
 	filename := filepath.Base(inputFlag)
 
+	labels := label.Labels{
+		Scenario:         scenarioFlag,
+		PayloadSize:      payloadSizeLabel(int64(len(data))),
+		ConcurrencyLevel: concurrencyLevelFlag,
+	}
+
 	client, err := newGatewayClient(cfg, protocolFlag)
 	if err != nil {
 		return fmt.Errorf("failed to create gateway client: %w", err)
@@ -79,7 +90,7 @@ func runTranscode(cmd *cobra.Command, args []string) error {
 	// t1: client starts sending to gateway
 	t1 := time.Now()
 
-	result, t7, err := client.Transcode(ctx, filename, data, t1)
+	result, t7, err := client.Transcode(ctx, filename, data, t1, labels)
 	if err != nil {
 		return fmt.Errorf("transcode request failed: %w", err)
 	}
@@ -95,13 +106,34 @@ func runTranscode(cmd *cobra.Command, args []string) error {
 	gatewayToClientDuration := t8.Sub(t7)
 	totalBytes := totalResultSize(result)
 
-	if err := reportMetric(cfg.GatewayRESTAddr, gatewayToClientDuration, totalBytes, protocolFlag); err != nil {
+	if err := reportMetric(cfg.GatewayRESTAddr, gatewayToClientDuration, totalBytes, protocolFlag, labels); err != nil {
 		// reporting failure should not fail the whole command; results are already saved
 		fmt.Fprintf(os.Stderr, "warning: failed to report metric to gateway: %v\n", err)
 	}
 
 	fmt.Printf("Transcoding complete. %d resolution(s) saved to %s\n", len(result.Outputs), outputFlag)
 	return nil
+}
+
+// payloadSizeLabel rounds the input file size into a label like "10mb" or "500mb",
+// matching the fixed payload sizes defined for Scenario A. Falls back to a raw
+// byte-based label if the size doesn't match any predefined bucket.
+func payloadSizeLabel(bytes int64) string {
+	mb := bytes / (1024 * 1024)
+	switch {
+	case mb <= 10:
+		return "10mb"
+	case mb <= 50:
+		return "50mb"
+	case mb <= 100:
+		return "100mb"
+	case mb <= 250:
+		return "250mb"
+	case mb <= 500:
+		return "500mb"
+	default:
+		return fmt.Sprintf("%dmb", mb)
+	}
 }
 
 // newGatewayClient builds the appropriate GatewayClient implementation based on the chosen protocol.
@@ -148,21 +180,28 @@ func totalResultSize(result *model.TranscodeResult) int64 {
 // Defined locally because client cannot import gateway's internal package
 // across module boundaries.
 type reportMetricPayload struct {
-	Segment         string  `json:"segment"`
-	Protocol        string  `json:"protocol"`
-	DurationSeconds float64 `json:"durationSeconds"`
-	Bytes           int64   `json:"bytes"`
+	Segment          string  `json:"segment"`
+	Protocol         string  `json:"protocol"`
+	DurationSeconds  float64 `json:"durationSeconds"`
+	Bytes            int64   `json:"bytes"`
+	Scenario         string  `json:"scenario"`
+	PayloadSize      string  `json:"payloadSize"`
+	ConcurrencyLevel string  `json:"concurrencyLevel"`
 }
 
 // reportMetric sends the client-measured SegmentGatewayToClient duration back to
 // gateway, since gateway has no way to measure t8 (client's own receive-complete
-// time) on its own.
-func reportMetric(gatewayRESTAddr string, duration time.Duration, totalBytes int64, protocol string) error {
+// time) on its own. Scenario labels are included so gateway can attach them to
+// the correct histogram bucket.
+func reportMetric(gatewayRESTAddr string, duration time.Duration, totalBytes int64, protocol string, labels label.Labels) error {
 	payload := reportMetricPayload{
-		Segment:         constant.SegmentGatewayToClient,
-		Protocol:        protocol,
-		DurationSeconds: duration.Seconds(),
-		Bytes:           totalBytes,
+		Segment:          constant.SegmentGatewayToClient,
+		Protocol:         protocol,
+		DurationSeconds:  duration.Seconds(),
+		Bytes:            totalBytes,
+		Scenario:         labels.Scenario,
+		PayloadSize:      labels.PayloadSize,
+		ConcurrencyLevel: labels.ConcurrencyLevel,
 	}
 
 	body, err := json.Marshal(payload)

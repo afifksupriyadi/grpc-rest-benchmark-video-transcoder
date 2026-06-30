@@ -8,6 +8,7 @@ import (
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/util/contextutil"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/lib/metrics"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
 )
 
@@ -28,13 +29,14 @@ func NewVideoService(workerClient WorkerClient, metrics metrics.MetricsRecorder)
 // Transcode forwards the video payload to the worker and returns the transcoded result.
 // t3 is recorded here and passed to the worker so it can compute SegmentGatewayToWorker locally.
 // t5 is received back from the worker so SegmentWorkerToGateway can be computed here at t6.
-func (s *VideoServiceImpl) Transcode(ctx context.Context, payload model.VideoPayload) (*model.TranscodeResult, error) {
+// labels are forwarded unchanged to the worker.
+func (s *VideoServiceImpl) Transcode(ctx context.Context, payload model.VideoPayload, labels label.Labels) (*model.TranscodeResult, error) {
 	protocol := contextutil.GetProtocol(ctx)
 
 	// t3: gateway starts sending to worker
 	t3 := time.Now()
 
-	result, t5, err := s.workerClient.ProcessVideo(ctx, payload, t3)
+	result, t5, err := s.workerClient.ProcessVideo(ctx, payload, t3, labels)
 	if err != nil {
 		return nil, response.WrapAppError(ctx, err, response.ErrWorkerUnavailable, "worker failed to process video")
 	}
@@ -43,8 +45,8 @@ func (s *VideoServiceImpl) Transcode(ctx context.Context, payload model.VideoPay
 	t6 := time.Now()
 
 	workerToGatewayDuration := t6.Sub(t5)
-	s.metrics.RecordLatency(constant.SegmentWorkerToGateway, protocol, workerToGatewayDuration)
-	s.metrics.RecordThroughput(constant.SegmentWorkerToGateway, protocol, int64(totalSize(result)), workerToGatewayDuration)
+	s.metrics.RecordLatency(constant.SegmentWorkerToGateway, protocol, labels, workerToGatewayDuration)
+	s.metrics.RecordThroughput(constant.SegmentWorkerToGateway, protocol, labels, int64(totalSize(result)), workerToGatewayDuration)
 
 	return result, nil
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/util/contextutil"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/lib/metrics"
 	pb "github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gen/video"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/resource"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
@@ -34,8 +35,9 @@ func NewVideoServer(svc service.VideoService, metrics metrics.MetricsRecorder) *
 }
 
 // TranscodeVideo receives a video stream from the client, transcodes it, and streams results back.
-// It reads t1 from incoming metadata (sent by client before opening the stream),
-// and sets t7 as outgoing header metadata before sending the first result chunk.
+// It reads t1 and scenario labels from incoming metadata sent by the client.
+// It also reads CPU/memory snapshots at t1, t2, t7, and after sending completes,
+// to compute per-request CPU and memory usage for the gateway's own segments.
 func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServer) error {
 	md, ok := metadata.FromIncomingContext(stream.Context())
 	if !ok || len(md.Get(timing.HeaderTimestamp)) == 0 {
@@ -44,6 +46,12 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 	t1, err := timing.DecodeTimestamp(md.Get(timing.HeaderTimestamp)[0])
 	if err != nil {
 		return err
+	}
+
+	labels := label.Labels{
+		Scenario:         getMetadataValue(md, label.HeaderScenario),
+		PayloadSize:      getMetadataValue(md, label.HeaderPayloadSize),
+		ConcurrencyLevel: getMetadataValue(md, label.HeaderConcurrencyLevel),
 	}
 
 	snapT1, errSnapT1 := resource.Read()
@@ -62,13 +70,13 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 			return err
 		}
 
-		if chunk.Done {
-			break
-		}
-
 		if firstChunk {
 			payload.Filename = chunk.Filename
 			firstChunk = false
+		}
+
+		if chunk.Done {
+			break
 		}
 
 		payload.Data = append(payload.Data, chunk.Data...)
@@ -79,20 +87,20 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 	snapT2, errSnapT2 := resource.Read()
 
 	clientToGatewayDuration := t2.Sub(t1)
-	s.metrics.RecordLatency(constant.SegmentClientToGateway, constant.ProtocolGRPC, clientToGatewayDuration)
-	s.metrics.RecordThroughput(constant.SegmentClientToGateway, constant.ProtocolGRPC, int64(len(payload.Data)), clientToGatewayDuration)
+	s.metrics.RecordLatency(constant.SegmentClientToGateway, constant.ProtocolGRPC, labels, clientToGatewayDuration)
+	s.metrics.RecordThroughput(constant.SegmentClientToGateway, constant.ProtocolGRPC, labels, int64(len(payload.Data)), clientToGatewayDuration)
 
 	if errSnapT1 == nil && errSnapT2 == nil {
 		cpuDelta := snapT2.CPUSeconds - snapT1.CPUSeconds
 		if clientToGatewayDuration.Seconds() > 0 {
-			s.metrics.RecordCPU(constant.SegmentClientToGateway, constant.ProtocolGRPC, cpuDelta/clientToGatewayDuration.Seconds())
+			s.metrics.RecordCPU(constant.SegmentClientToGateway, constant.ProtocolGRPC, labels, cpuDelta/clientToGatewayDuration.Seconds())
 		}
 		avgMemory := float64(snapT1.MemoryBytes+snapT2.MemoryBytes) / 2
-		s.metrics.RecordMemory(constant.SegmentClientToGateway, constant.ProtocolGRPC, avgMemory)
+		s.metrics.RecordMemory(constant.SegmentClientToGateway, constant.ProtocolGRPC, labels, avgMemory)
 	}
 
 	ctx := contextutil.SetProtocol(stream.Context(), constant.ProtocolGRPC)
-	result, err := s.svc.Transcode(ctx, payload)
+	result, err := s.svc.Transcode(ctx, payload, labels)
 	if err != nil {
 		return response.ParseErrorWithGRPC(err)
 	}
@@ -109,7 +117,10 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 	for _, output := range result.Outputs {
 		data := output.Data
 		for len(data) > 0 {
-			size := min(chunkSize, len(data))
+			size := chunkSize
+			if len(data) < size {
+				size = len(data)
+			}
 
 			if err := stream.Send(&pb.TranscodeChunk{
 				Resolution: output.Resolution,
@@ -136,10 +147,10 @@ func (s *VideoServer) TranscodeVideo(stream pb.GatewayService_TranscodeVideoServ
 	if errSnapT7 == nil && errSnapSendEnd == nil {
 		cpuDelta := snapSendEnd.CPUSeconds - snapT7.CPUSeconds
 		if gatewayToClientDuration.Seconds() > 0 {
-			s.metrics.RecordCPU(constant.SegmentGatewayToClient, constant.ProtocolGRPC, cpuDelta/gatewayToClientDuration.Seconds())
+			s.metrics.RecordCPU(constant.SegmentGatewayToClient, constant.ProtocolGRPC, labels, cpuDelta/gatewayToClientDuration.Seconds())
 		}
 		avgMemory := float64(snapT7.MemoryBytes+snapSendEnd.MemoryBytes) / 2
-		s.metrics.RecordMemory(constant.SegmentGatewayToClient, constant.ProtocolGRPC, avgMemory)
+		s.metrics.RecordMemory(constant.SegmentGatewayToClient, constant.ProtocolGRPC, labels, avgMemory)
 	}
 
 	return nil
@@ -151,4 +162,14 @@ func (s *VideoServer) CheckStatus(ctx context.Context, req *pb.StatusRequest) (*
 		Status:  "ok",
 		Message: "gateway is running",
 	}, nil
+}
+
+// getMetadataValue safely extracts the first value for a metadata key, returning
+// an empty string if the key is absent.
+func getMetadataValue(md metadata.MD, key string) string {
+	vals := md.Get(key)
+	if len(vals) == 0 {
+		return ""
+	}
+	return vals[0]
 }

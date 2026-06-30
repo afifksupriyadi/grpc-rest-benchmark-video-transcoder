@@ -10,6 +10,7 @@ import (
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/service"
 	pb "github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gen/video"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,10 +33,16 @@ func NewGrpcWorkerClient(workerAddr string) (service.WorkerClient, error) {
 	return &GrpcWorkerClient{stub: pb.NewWorkerServiceClient(conn)}, nil
 }
 
-// ProcessVideo streams the video payload to the worker, carrying t3 as outgoing metadata.
-// It reads t5 back as header metadata from the worker before collecting result chunks.
-func (c *GrpcWorkerClient) ProcessVideo(ctx context.Context, payload model.VideoPayload, t3 time.Time) (*model.TranscodeResult, time.Time, error) {
-	md := metadata.Pairs(timing.HeaderTimestamp, timing.EncodeTimestamp(t3))
+// ProcessVideo streams the video payload to the worker, carrying t3 and scenario
+// labels as outgoing metadata. It reads t5 back as header metadata from the worker
+// before collecting result chunks.
+func (c *GrpcWorkerClient) ProcessVideo(ctx context.Context, payload model.VideoPayload, t3 time.Time, labels label.Labels) (*model.TranscodeResult, time.Time, error) {
+	md := metadata.Pairs(
+		timing.HeaderTimestamp, timing.EncodeTimestamp(t3),
+		label.HeaderScenario, labels.Scenario,
+		label.HeaderPayloadSize, labels.PayloadSize,
+		label.HeaderConcurrencyLevel, labels.ConcurrencyLevel,
+	)
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
 	stream, err := c.stub.ProcessVideo(ctx)

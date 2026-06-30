@@ -13,6 +13,7 @@ import (
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/service"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/internal/util/contextutil"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gateway/lib/metrics"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/resource"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/response"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
@@ -32,23 +33,25 @@ func NewVideoHandler(svc service.VideoService, metrics metrics.MetricsRecorder, 
 }
 
 // HandleTranscode receives a video upload, forwards it for transcoding, and streams the result back.
+// It reads t1 and scenario labels from the request headers sent by the client.
 // It also reads CPU/memory snapshots at t1, t2, t7, and after sending completes,
-// to compute per-request CPU and memory usage for the gateway's own segments
-// (client_to_gateway and gateway_to_client).
+// to compute per-request CPU and memory usage for the gateway's own segments.
 func (h *VideoHandler) HandleTranscode(c *gin.Context) {
-	// snapT1 is taken at gateway receive-start for CPU/RAM measurement of Segment 1,
-	// independent of the client's t1 clock.
-	snapT1, errSnapT1 := resource.Read()
-
-	// t1: client records before sending; read from X-Timestamp request header so
-	// Segment 1 latency (t2-t1) uses the same reference point as the gRPC path.
 	t1Str := c.Request.Header.Get(timing.HeaderTimestamp)
 	t1, err := timing.DecodeTimestamp(t1Str)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, response.BuildError(c.Request.Context(),
-			response.WrapAppError(c.Request.Context(), err, response.ErrInvalidRequest, "missing or invalid X-Timestamp request header")))
+			response.WrapAppError(c.Request.Context(), err, response.ErrInvalidRequest, "missing or invalid timestamp header")))
 		return
 	}
+
+	labels := label.Labels{
+		Scenario:         c.Request.Header.Get(label.HeaderScenario),
+		PayloadSize:      c.Request.Header.Get(label.HeaderPayloadSize),
+		ConcurrencyLevel: c.Request.Header.Get(label.HeaderConcurrencyLevel),
+	}
+
+	snapT1, errSnapT1 := resource.Read()
 
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.cfg.MaxFileSizeBytes)
 	data, err := io.ReadAll(c.Request.Body)
@@ -63,16 +66,16 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 	snapT2, errSnapT2 := resource.Read()
 
 	clientToGatewayDuration := t2.Sub(t1)
-	h.metrics.RecordLatency(constant.SegmentClientToGateway, constant.ProtocolREST, clientToGatewayDuration)
-	h.metrics.RecordThroughput(constant.SegmentClientToGateway, constant.ProtocolREST, int64(len(data)), clientToGatewayDuration)
+	h.metrics.RecordLatency(constant.SegmentClientToGateway, constant.ProtocolREST, labels, clientToGatewayDuration)
+	h.metrics.RecordThroughput(constant.SegmentClientToGateway, constant.ProtocolREST, labels, int64(len(data)), clientToGatewayDuration)
 
 	if errSnapT1 == nil && errSnapT2 == nil {
 		cpuDelta := snapT2.CPUSeconds - snapT1.CPUSeconds
 		if clientToGatewayDuration.Seconds() > 0 {
-			h.metrics.RecordCPU(constant.SegmentClientToGateway, constant.ProtocolREST, cpuDelta/clientToGatewayDuration.Seconds())
+			h.metrics.RecordCPU(constant.SegmentClientToGateway, constant.ProtocolREST, labels, cpuDelta/clientToGatewayDuration.Seconds())
 		}
 		avgMemory := float64(snapT1.MemoryBytes+snapT2.MemoryBytes) / 2
-		h.metrics.RecordMemory(constant.SegmentClientToGateway, constant.ProtocolREST, avgMemory)
+		h.metrics.RecordMemory(constant.SegmentClientToGateway, constant.ProtocolREST, labels, avgMemory)
 	}
 
 	filename := c.Request.Header.Get("X-Video-Filename")
@@ -82,7 +85,7 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 	}
 
 	ctx := contextutil.SetProtocol(c.Request.Context(), constant.ProtocolREST)
-	result, err := h.svc.Transcode(ctx, payload)
+	result, err := h.svc.Transcode(ctx, payload, labels)
 	if err != nil {
 		res := response.BuildError(c.Request.Context(), err)
 		c.JSON(res.Status, res.Body)
@@ -93,9 +96,9 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 	t7 := time.Now()
 	snapT7, errSnapT7 := resource.Read()
 
+	c.Header(timing.HeaderTimestamp, timing.EncodeTimestamp(t7))
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Transfer-Encoding", "chunked")
-	c.Header(timing.HeaderTimestamp, timing.EncodeTimestamp(t7))
 	c.Status(http.StatusOK)
 
 	for _, output := range result.Outputs {
@@ -122,9 +125,9 @@ func (h *VideoHandler) HandleTranscode(c *gin.Context) {
 	if errSnapT7 == nil && errSnapSendEnd == nil {
 		cpuDelta := snapSendEnd.CPUSeconds - snapT7.CPUSeconds
 		if gatewayToClientDuration.Seconds() > 0 {
-			h.metrics.RecordCPU(constant.SegmentGatewayToClient, constant.ProtocolREST, cpuDelta/gatewayToClientDuration.Seconds())
+			h.metrics.RecordCPU(constant.SegmentGatewayToClient, constant.ProtocolREST, labels, cpuDelta/gatewayToClientDuration.Seconds())
 		}
 		avgMemory := float64(snapT7.MemoryBytes+snapSendEnd.MemoryBytes) / 2
-		h.metrics.RecordMemory(constant.SegmentGatewayToClient, constant.ProtocolREST, avgMemory)
+		h.metrics.RecordMemory(constant.SegmentGatewayToClient, constant.ProtocolREST, labels, avgMemory)
 	}
 }

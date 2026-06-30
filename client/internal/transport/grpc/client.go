@@ -10,6 +10,7 @@ import (
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/client/internal/model"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/client/internal/transport"
 	pb "github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/gen/video"
+	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/label"
 	"github.com/afifksupriyadi/grpc-rest-benchmark-video-transcoder/shared/timing"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,10 +33,16 @@ func NewGrpcGatewayClient(gatewayAddr string) (transport.GatewayClient, error) {
 	return &GrpcGatewayClient{stub: pb.NewGatewayServiceClient(conn)}, nil
 }
 
-// Transcode streams the video to gateway, carrying t1 as outgoing metadata.
-// It reads t7 back as header metadata from gateway before collecting result chunks.
-func (c *GrpcGatewayClient) Transcode(ctx context.Context, filename string, data []byte, t1 time.Time) (*model.TranscodeResult, time.Time, error) {
-	md := metadata.Pairs(timing.HeaderTimestamp, timing.EncodeTimestamp(t1))
+// Transcode streams the video to gateway, carrying t1 and scenario labels as
+// outgoing metadata. It reads t7 back as header metadata from gateway before
+// collecting result chunks.
+func (c *GrpcGatewayClient) Transcode(ctx context.Context, filename string, data []byte, t1 time.Time, labels label.Labels) (*model.TranscodeResult, time.Time, error) {
+	md := metadata.Pairs(
+		timing.HeaderTimestamp, timing.EncodeTimestamp(t1),
+		label.HeaderScenario, labels.Scenario,
+		label.HeaderPayloadSize, labels.PayloadSize,
+		label.HeaderConcurrencyLevel, labels.ConcurrencyLevel,
+	)
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
 	stream, err := c.stub.TranscodeVideo(ctx)

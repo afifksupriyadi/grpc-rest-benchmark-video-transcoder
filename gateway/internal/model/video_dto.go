@@ -12,8 +12,11 @@ type ChunkHeader struct {
 // gateway cannot measure on its own — currently only used for SegmentGatewayToClient
 // (t8-t7), since gateway never knows the client's true t8.
 type ReportMetricRequest struct {
-	Segment         string  `json:"segment"`
-	Protocol        string  `json:"protocol"`
-	DurationSeconds float64 `json:"durationSeconds"`
-	Bytes           int64   `json:"bytes"`
+	Segment          string  `json:"segment"`
+	Protocol         string  `json:"protocol"`
+	DurationSeconds  float64 `json:"durationSeconds"`
+	Bytes            int64   `json:"bytes"`
+	Scenario         string  `json:"scenario"`
+	PayloadSize      string  `json:"payloadSize"`
+	ConcurrencyLevel string  `json:"concurrencyLevel"`
 }
