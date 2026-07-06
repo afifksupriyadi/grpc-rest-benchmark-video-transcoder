@@ -55,7 +55,7 @@ tbody tr:last-child td { border-bottom: none; }
 <div class="page">
   <div>
     <h1>Skenario A — Payload 10MB</h1>
-    <div class="sub">Hasil REST vs gRPC &mdash; Latency, Throughput, CPU, dan Memori</div>
+    <div class="sub">Hasil REST vs gRPC &mdash; Latency, Throughput, CPU, dan RAM</div>
   </div>
   
 <div class="legend">
@@ -83,7 +83,7 @@ tbody tr:last-child td { border-bottom: none; }
   <div class="table-scroll">
     <table>
       <thead><tr><th>Segmen</th><th>REST P50</th><th>REST P95</th><th>REST P99</th><th>gRPC P50</th><th>gRPC P95</th><th>gRPC P99</th><th>Rasio P50</th><th>Rasio P95</th><th>Rasio P99</th></tr></thead>
-      <tbody><tr><td>Client ke Gateway</td><td>22.92</td><td>208.75</td><td>422.50</td><td>71.31</td><td>97.15</td><td>99.45</td><td class="ratio-cell warn-medium">3.11×</td><td class="ratio-cell good-medium">0.47×</td><td class="ratio-cell good-medium">0.24×</td></tr><tr><td>Gateway ke Worker</td><td>41.15</td><td>172.50</td><td>234.50</td><td>46.54</td><td>94.09</td><td>98.86</td><td class="ratio-cell warn-light">1.13×</td><td class="ratio-cell good-light">0.55×</td><td class="ratio-cell good-medium">0.42×</td></tr><tr><td>Worker ke Gateway</td><td>8.09</td><td>74.17</td><td>94.83</td><td>15.54</td><td>24.64</td><td>42.25</td><td class="ratio-cell warn-light">1.92×</td><td class="ratio-cell good-medium">0.33×</td><td class="ratio-cell good-medium">0.45×</td></tr><tr><td>Gateway ke Client</td><td>2.98</td><td>20.87</td><td>42.25</td><td>16.94</td><td>24.69</td><td>2035.00</td><td class="ratio-cell warn-strong">5.68×</td><td class="ratio-cell warn-light">1.18×</td><td class="ratio-cell warn-strong">48.17×</td></tr></tbody>
+      <tbody><tr><td>Client ke Gateway</td><td>22.92</td><td>208.75</td><td>422.50</td><td>71.30</td><td>97.14</td><td>99.43</td><td class="ratio-cell warn-medium">3.11×</td><td class="ratio-cell good-medium">0.47×</td><td class="ratio-cell good-medium">0.24×</td></tr><tr><td>Gateway ke Worker</td><td>41.15</td><td>172.50</td><td>234.50</td><td>46.53</td><td>94.05</td><td>98.82</td><td class="ratio-cell warn-light">1.13×</td><td class="ratio-cell good-light">0.55×</td><td class="ratio-cell good-medium">0.42×</td></tr><tr><td>Worker ke Gateway</td><td>8.09</td><td>74.17</td><td>94.83</td><td>15.54</td><td>24.64</td><td>42.25</td><td class="ratio-cell warn-light">1.92×</td><td class="ratio-cell good-medium">0.33×</td><td class="ratio-cell good-medium">0.45×</td></tr><tr><td>Gateway ke Client</td><td>2.98</td><td>20.88</td><td>42.25</td><td>16.94</td><td>24.69</td><td>2035.00</td><td class="ratio-cell warn-strong">5.68×</td><td class="ratio-cell warn-light">1.18×</td><td class="ratio-cell warn-strong">48.17×</td></tr></tbody>
     </table>
   </div>
   <div class="caption">Rasio = nilai gRPC P50/P95/P99 dibagi nilai REST pada persentil yang sama. Nilai &lt; 1× berarti gRPC lebih rendah dari REST pada persentil itu; nilai &gt; 1× berarti gRPC lebih tinggi.</div>
@@ -93,13 +93,13 @@ tbody tr:last-child td { border-bottom: none; }
   <div class="table-scroll">
     <table>
       <thead><tr><th>Segmen</th><th>REST P50</th><th>REST P95</th><th>REST P99</th><th>gRPC P50</th><th>gRPC P95</th><th>gRPC P99</th><th>Rasio P50</th><th>Rasio P95</th><th>Rasio P99</th></tr></thead>
-      <tbody><tr><td>Client ke Gateway</td><td>453.83</td><td>962.95</td><td>1011.79</td><td>176.64</td><td>248.06</td><td>254.41</td><td class="ratio-cell good-medium">0.39×</td><td class="ratio-cell good-medium">0.26×</td><td class="ratio-cell good-medium">0.25×</td></tr><tr><td>Gateway ke Worker</td><td>291.56</td><td>489.96</td><td>507.59</td><td>201.48</td><td>412.80</td><td>492.16</td><td class="ratio-cell good-light">0.69×</td><td class="ratio-cell good-light">0.84×</td><td class="ratio-cell neutral">0.97×</td></tr><tr><td>Worker ke Gateway</td><td>328.05</td><td>825.60</td><td>984.32</td><td>173.73</td><td>313.60</td><td>472.32</td><td class="ratio-cell good-light">0.53×</td><td class="ratio-cell good-medium">0.38×</td><td class="ratio-cell good-medium">0.48×</td></tr><tr><td>Gateway ke Client</td><td>947.22</td><td>1934.63</td><td>2025.33</td><td>176.65</td><td>248.06</td><td>254.41</td><td class="ratio-cell good-strong">0.19×</td><td class="ratio-cell good-strong">0.13×</td><td class="ratio-cell good-strong">0.13×</td></tr></tbody>
+      <tbody><tr><td>Client ke Gateway</td><td>453.82</td><td>962.95</td><td>1011.79</td><td>176.64</td><td>248.06</td><td>254.41</td><td class="ratio-cell good-medium">0.39×</td><td class="ratio-cell good-medium">0.26×</td><td class="ratio-cell good-medium">0.25×</td></tr><tr><td>Gateway ke Worker</td><td>291.56</td><td>489.96</td><td>507.59</td><td>201.48</td><td>412.80</td><td>492.16</td><td class="ratio-cell good-light">0.69×</td><td class="ratio-cell good-light">0.84×</td><td class="ratio-cell neutral">0.97×</td></tr><tr><td>Worker ke Gateway</td><td>328.01</td><td>825.60</td><td>984.32</td><td>173.72</td><td>313.60</td><td>472.32</td><td class="ratio-cell good-light">0.53×</td><td class="ratio-cell good-medium">0.38×</td><td class="ratio-cell good-medium">0.48×</td></tr><tr><td>Gateway ke Client</td><td>947.21</td><td>1934.63</td><td>2025.33</td><td>176.64</td><td>248.06</td><td>254.41</td><td class="ratio-cell good-strong">0.19×</td><td class="ratio-cell good-strong">0.13×</td><td class="ratio-cell good-strong">0.13×</td></tr></tbody>
     </table>
   </div>
   <div class="caption">Rasio = nilai gRPC P50/P95/P99 dibagi nilai REST pada persentil yang sama. Nilai &lt; 1× berarti gRPC lebih rendah dari REST pada persentil itu; nilai &gt; 1× berarti gRPC lebih tinggi.</div>
 </section>
 <section class="table-block">
-  <h2>Cpu (ratio/core)</h2>
+  <h2>CPU (ratio/core)</h2>
   <div class="table-scroll">
     <table>
       <thead><tr><th>Segmen</th><th>REST P50</th><th>REST P95</th><th>REST P99</th><th>gRPC P50</th><th>gRPC P95</th><th>gRPC P99</th><th>Rasio P50</th><th>Rasio P95</th><th>Rasio P99</th></tr></thead>
@@ -109,11 +109,11 @@ tbody tr:last-child td { border-bottom: none; }
   <div class="caption">Rasio = nilai gRPC P50/P95/P99 dibagi nilai REST pada persentil yang sama. Nilai &lt; 1× berarti gRPC lebih rendah dari REST pada persentil itu; nilai &gt; 1× berarti gRPC lebih tinggi. Baris "Worker ke Gateway" tidak punya data CPU/RAM &mdash; arsitektur sistem sengaja tidak mengukur CPU/RAM pada segmen ini (lihat <code>video_service.go</code>), bukan kesalahan pengambilan data. Baris tetap ditampilkan supaya bentuk tabel konsisten dengan tabel lain.</div>
 </section>
 <section class="table-block">
-  <h2>Memory (MB)</h2>
+  <h2>RAM (MB)</h2>
   <div class="table-scroll">
     <table>
       <thead><tr><th>Segmen</th><th>REST P50</th><th>REST P95</th><th>REST P99</th><th>gRPC P50</th><th>gRPC P95</th><th>gRPC P99</th><th>Rasio P50</th><th>Rasio P95</th><th>Rasio P99</th></tr></thead>
-      <tbody><tr><td>Client ke Gateway</td><td>91.26</td><td>124.33</td><td>127.27</td><td>49.11</td><td>78.70</td><td>118.14</td><td class="ratio-cell good-light">0.54×</td><td class="ratio-cell good-light">0.63×</td><td class="ratio-cell neutral">0.93×</td></tr><tr><td>Gateway ke Worker</td><td>48.00</td><td>62.40</td><td>63.68</td><td>53.57</td><td>115.60</td><td>125.52</td><td class="ratio-cell warn-light">1.12×</td><td class="ratio-cell warn-light">1.85×</td><td class="ratio-cell warn-light">1.97×</td></tr><tr><td>Worker ke Gateway</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="ratio-cell na">—</td><td class="ratio-cell na">—</td><td class="ratio-cell na">—</td></tr><tr><td>Gateway ke Client</td><td>96.00</td><td>124.80</td><td>127.36</td><td>50.37</td><td>103.20</td><td>123.04</td><td class="ratio-cell good-light">0.52×</td><td class="ratio-cell good-light">0.83×</td><td class="ratio-cell neutral">0.97×</td></tr></tbody>
+      <tbody><tr><td>Client ke Gateway</td><td>91.26</td><td>124.33</td><td>127.27</td><td>49.11</td><td>78.47</td><td>118.09</td><td class="ratio-cell good-light">0.54×</td><td class="ratio-cell good-light">0.63×</td><td class="ratio-cell neutral">0.93×</td></tr><tr><td>Gateway ke Worker</td><td>48.00</td><td>62.40</td><td>63.68</td><td>53.57</td><td>115.60</td><td>125.52</td><td class="ratio-cell warn-light">1.12×</td><td class="ratio-cell warn-light">1.85×</td><td class="ratio-cell warn-light">1.97×</td></tr><tr><td>Worker ke Gateway</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="ratio-cell na">—</td><td class="ratio-cell na">—</td><td class="ratio-cell na">—</td></tr><tr><td>Gateway ke Client</td><td>96.00</td><td>124.80</td><td>127.36</td><td>50.37</td><td>103.20</td><td>123.04</td><td class="ratio-cell good-light">0.52×</td><td class="ratio-cell good-light">0.83×</td><td class="ratio-cell neutral">0.97×</td></tr></tbody>
     </table>
   </div>
   <div class="caption">Rasio = nilai gRPC P50/P95/P99 dibagi nilai REST pada persentil yang sama. Nilai &lt; 1× berarti gRPC lebih rendah dari REST pada persentil itu; nilai &gt; 1× berarti gRPC lebih tinggi. Baris "Worker ke Gateway" tidak punya data CPU/RAM &mdash; arsitektur sistem sengaja tidak mengukur CPU/RAM pada segmen ini (lihat <code>video_service.go</code>), bukan kesalahan pengambilan data. Baris tetap ditampilkan supaya bentuk tabel konsisten dengan tabel lain.</div>

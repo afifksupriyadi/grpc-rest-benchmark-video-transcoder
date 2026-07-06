@@ -1,4 +1,4 @@
-### Tabel Cpu — Payload 10MB (ratio/core)
+### Tabel CPU — Payload 10MB (ratio/core)
 
 | Segmen | REST P50 | REST P95 | REST P99 | gRPC P50 | gRPC P95 | gRPC P99 | Rasio P50 | Rasio P95 | Rasio P99 |
 |---|---|---|---|---|---|---|---|---|---|

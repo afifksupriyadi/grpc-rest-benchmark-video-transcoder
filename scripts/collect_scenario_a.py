@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Query Prometheus for one Scenario A payload point and write the raw
 long-format CSV plus the four per-payload wide-format result tables
-(latency, throughput, CPU, memory), CSV and Markdown.
+(latency, throughput, CPU, RAM), CSV and Markdown.
 
 Uses only the standard library so it runs with a plain `python3`, no pip
 install required.
@@ -26,7 +26,17 @@ METRIC_SHORT_NAME = {
     "latency_seconds": "latency",
     "throughput_bytes_per_second": "throughput",
     "cpu_usage_ratio": "cpu",
-    "memory_usage_bytes": "memory",
+    "memory_usage_bytes": "ram",
+}
+# Display title per short name — NOT str.capitalize(), since that mangles
+# "cpu" -> "Cpu" and "ram" -> "Ram". Terminology per project convention:
+# CPU and RAM, never "memory"/"memori" (the Prometheus metric name itself,
+# memory_usage_bytes, is an internal identifier and stays as-is).
+METRIC_DISPLAY_NAME = {
+    "latency": "Latency",
+    "throughput": "Throughput",
+    "cpu": "CPU",
+    "ram": "RAM",
 }
 SERVICES = ["gateway", "worker"]
 PERCENTILES = [50, 95, 99]
@@ -266,7 +276,7 @@ LEGEND_HTML = """
 </div>
 """
 
-CPU_MEMORY_NOTE = (
+CPU_RAM_NOTE = (
     'Baris "Worker ke Gateway" tidak punya data CPU/RAM &mdash; arsitektur sistem sengaja tidak '
     "mengukur CPU/RAM pada segmen ini (lihat <code>video_service.go</code>), bukan kesalahan "
     "pengambilan data. Baris tetap ditampilkan supaya bentuk tabel konsisten dengan tabel lain."
@@ -312,7 +322,7 @@ def write_payload_html(path, payload_size, sections):
 <div class="page">
   <div>
     <h1>Skenario A — Payload {payload_size.upper()}</h1>
-    <div class="sub">Hasil REST vs gRPC &mdash; Latency, Throughput, CPU, dan Memori</div>
+    <div class="sub">Hasil REST vs gRPC &mdash; Latency, Throughput, CPU, dan RAM</div>
   </div>
   {LEGEND_HTML}
   {body}
@@ -349,17 +359,18 @@ def main():
     html_sections = []
     for metric, unit, _factor in METRICS:
         short = METRIC_SHORT_NAME[metric]
+        display = METRIC_DISPLAY_NAME[short]
         rows = build_wide_rows(raw, metric)
         base = root / "results" / "scenario_a" / "tables" / f"{args.payload_size}_{short}"
         write_wide_csv(base.with_suffix(".csv"), rows)
         write_wide_markdown(
             base.with_suffix(".md"),
-            f"Tabel {short.capitalize()} — Payload {payload_title} ({unit})",
+            f"Tabel {display} — Payload {payload_title} ({unit})",
             rows,
         )
         print(f"Wrote {base.with_suffix('.csv')} and .md")
-        note = CPU_MEMORY_NOTE if short in ("cpu", "memory") else None
-        html_sections.append((short.capitalize(), unit, rows, note))
+        note = CPU_RAM_NOTE if short in ("cpu", "ram") else None
+        html_sections.append((display, unit, rows, note))
 
     html_path = root / "results" / "scenario_a" / "tables" / f"{args.payload_size}.html"
     write_payload_html(html_path, args.payload_size, html_sections)
