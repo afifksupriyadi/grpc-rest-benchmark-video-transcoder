@@ -1,8 +1,8 @@
-### Tabel Throughput — Payload 50MB (MB/s)
+### Tabel Throughput: Payload 50MB (MB/s)
 
 | Segmen | REST P50 | REST P95 | REST P99 | gRPC P50 | gRPC P95 | gRPC P99 | Rasio P50 | Rasio P95 | Rasio P99 |
 |---|---|---|---|---|---|---|---|---|---|
 | Client ke Gateway | 749.04 | 996.50 | 1018.50 | 212.36 | 458.97 | 501.39 | 0.28× | 0.46× | 0.49× |
 | Gateway ke Worker | 560.00 | 977.60 | 1014.72 | 374.52 | 498.25 | 509.25 | 0.67× | 0.51× | 0.50× |
 | Worker ke Gateway | 816.76 | 1800.53 | 1998.51 | 350.61 | 495.86 | 508.77 | 0.43× | 0.28× | 0.25× |
-| Gateway ke Client | 1373.12 | 1980.51 | 2034.50 | 244.00 | 483.45 | 506.29 | 0.18× | 0.24× | 0.25× |
+| Gateway ke Client | 1373.11 | 1980.51 | 2034.50 | 244.00 | 483.45 | 506.29 | 0.18× | 0.24× | 0.25× |

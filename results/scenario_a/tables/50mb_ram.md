@@ -1,4 +1,4 @@
-### Tabel RAM — Payload 50MB (MB)
+### Tabel RAM: Payload 50MB (MB)
 
 | Segmen | REST P50 | REST P95 | REST P99 | gRPC P50 | gRPC P95 | gRPC P99 | Rasio P50 | Rasio P95 | Rasio P99 |
 |---|---|---|---|---|---|---|---|---|---|

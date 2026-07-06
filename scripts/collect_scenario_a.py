@@ -28,7 +28,7 @@ METRIC_SHORT_NAME = {
     "cpu_usage_ratio": "cpu",
     "memory_usage_bytes": "ram",
 }
-# Display title per short name — NOT str.capitalize(), since that mangles
+# Display title per short name. NOT str.capitalize(), since that mangles
 # "cpu" -> "Cpu" and "ram" -> "Ram". Terminology per project convention:
 # CPU and RAM, never "memory"/"memori" (the Prometheus metric name itself,
 # memory_usage_bytes, is an internal identifier and stays as-is).
@@ -56,7 +56,7 @@ def _retry_write(path, write_fn, attempts=8, delay=3):
     """Runs write_fn() (the actual file write), retrying on PermissionError.
     On Windows-mounted drives, a CSV freshly opened in Excel (or mid-sync in
     OneDrive) holds an exclusive lock that blocks writes/renames/deletes from
-    other processes — this survives that instead of crashing a 45-60 minute
+    other processes. This survives that instead of crashing a 45-60 minute
     collection run over one locked file."""
     for attempt in range(1, attempts + 1):
         try:
@@ -154,15 +154,30 @@ WIDE_HEADER = [
     "Rasio P50", "Rasio P95", "Rasio P99",
 ]
 
+# Whether a LOWER value is better for this metric. Throughput is the odd one
+# out, since higher MB/s is better there. Everything else (latency, CPU, RAM)
+# is lower-is-better. Used so the ratio color always means "good/bad for gRPC", not
+# just "gRPC number is bigger/smaller", which was confusing on the Throughput
+# table (gRPC consistently had lower MB/s than REST, rendering all-green even
+# though lower throughput is worse, not better).
+LOWER_IS_BETTER = {
+    "latency": True,
+    "throughput": False,
+    "cpu": True,
+    "ram": True,
+}
+
+
 # Ratio color banding: distance from 1x on a log2 scale so that 2x and 0.5x
-# get the same visual intensity. "good" = gRPC lower than REST, "warn" = gRPC
-# higher. Direction is purely descriptive (see caption text), not a judgment
-# of better/worse, since that flips depending on the metric (throughput vs
-# latency/CPU/RAM).
-def ratio_band_class(ratio):
+# get the same visual intensity. "good" = gRPC performs better than REST at
+# this percentile, "warn" = gRPC performs worse. Direction is normalized by
+# LOWER_IS_BETTER so green always means "better for gRPC" regardless of metric.
+def ratio_band_class(ratio, lower_is_better=True):
     if ratio is None or ratio <= 0:
         return "na"
     log = math.log2(ratio)
+    if not lower_is_better:
+        log = -log
     if abs(log) < 0.15:
         return "neutral"
     direction = "warn" if log > 0 else "good"
@@ -235,7 +250,9 @@ h1 { font-family: Iowan Old Style, Charter, Georgia, serif; font-size: 1.9rem; f
 .swatches { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; align-items: center; }
 .swatch { display: flex; align-items: center; gap: 0.45rem; font-size: 0.85rem; }
 .swatch i { width: 0.9rem; height: 0.9rem; border-radius: 3px; display: inline-block; border: 1px solid rgba(0,0,0,0.08); }
-.legend-note { font-size: 0.82rem; color: var(--ink-soft); line-height: 1.5; }
+.legend-note { font-size: 0.82rem; color: var(--ink-soft); line-height: 1.5; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.legend-note li { padding-left: 1rem; position: relative; }
+.legend-note li::before { content: "•"; position: absolute; left: 0; color: var(--accent); }
 section.table-block { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem 1.25rem 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
 section.table-block h2 { font-family: Iowan Old Style, Charter, Georgia, serif; font-size: 1.15rem; font-weight: 600; margin: 0; }
 .table-scroll { overflow-x: auto; }
@@ -252,42 +269,46 @@ tbody tr:last-child td { border-bottom: none; }
 .warn-light { background: var(--warn-light); } .warn-medium { background: var(--warn-medium); }
 .warn-strong { background: var(--warn-strong); color: #fff; }
 .na { background: var(--na); color: var(--ink-soft); }
-.caption { font-size: 0.8rem; color: var(--ink-soft); line-height: 1.5; }
+.caption { font-size: 0.8rem; color: var(--ink-soft); line-height: 1.5; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.caption li { padding-left: 1rem; position: relative; }
+.caption li::before { content: "•"; position: absolute; left: 0; color: var(--accent); }
 """
 
 LEGEND_HTML = """
 <div class="legend">
-  <div class="legend-title">Keterangan Warna Rasio (gRPC ÷ REST)</div>
+  <div class="legend-title">Keterangan Warna Rasio (gRPC vs REST)</div>
   <div class="swatches">
-    <div class="swatch"><i style="background:var(--good-strong)"></i>gRPC jauh lebih rendah (&lt; 0.2×)</div>
-    <div class="swatch"><i style="background:var(--good-medium)"></i>gRPC lebih rendah (0.2×-0.5×)</div>
-    <div class="swatch"><i style="background:var(--good-light)"></i>gRPC sedikit lebih rendah (0.5×-0.9×)</div>
-    <div class="swatch"><i style="background:var(--neutral); border:1px solid var(--line)"></i>Setara (0.9×-1.1×)</div>
-    <div class="swatch"><i style="background:var(--warn-light)"></i>gRPC sedikit lebih tinggi (1.1×-2×)</div>
-    <div class="swatch"><i style="background:var(--warn-medium)"></i>gRPC lebih tinggi (2×-5×)</div>
-    <div class="swatch"><i style="background:var(--warn-strong)"></i>gRPC jauh lebih tinggi (&gt; 5×)</div>
+    <div class="swatch"><i style="background:var(--good-strong)"></i>gRPC jauh lebih baik</div>
+    <div class="swatch"><i style="background:var(--good-medium)"></i>gRPC lebih baik</div>
+    <div class="swatch"><i style="background:var(--good-light)"></i>gRPC sedikit lebih baik</div>
+    <div class="swatch"><i style="background:var(--neutral); border:1px solid var(--line)"></i>Setara (selisih &lt; 10%)</div>
+    <div class="swatch"><i style="background:var(--warn-light)"></i>gRPC sedikit lebih buruk</div>
+    <div class="swatch"><i style="background:var(--warn-medium)"></i>gRPC lebih buruk</div>
+    <div class="swatch"><i style="background:var(--warn-strong)"></i>gRPC jauh lebih buruk</div>
     <div class="swatch"><i style="background:var(--na)"></i>Tidak ada data</div>
   </div>
-  <div class="legend-note">
-    Rasio dihitung sebagai nilai gRPC dibagi nilai REST pada persentil yang sama (P50 dengan P50, P95 dengan P95, P99 dengan P99).
-    Warna murni menunjukkan arah dan besar selisih (gRPC lebih rendah atau lebih tinggi dari REST) &mdash; bukan penilaian baik/buruk,
-    karena arti "lebih rendah lebih baik" berbeda antar metrik (mis. latency vs throughput).
-  </div>
+  <ul class="legend-note">
+    <li>Rasio dihitung sebagai nilai gRPC dibagi nilai REST pada persentil yang sama (P50 dengan P50, P95 dengan P95, P99 dengan P99).</li>
+    <li>Arti "lebih baik" menyesuaikan tiap metrik, jadi warna hijau selalu berarti gRPC unggul pada metrik itu.</li>
+    <li>Untuk Latency, CPU, dan RAM: nilai yang lebih rendah lebih baik.</li>
+    <li>Untuk Throughput: nilai yang lebih tinggi lebih baik.</li>
+  </ul>
 </div>
 """
 
-CPU_RAM_NOTE = (
-    'Baris "Worker ke Gateway" tidak punya data CPU/RAM &mdash; arsitektur sistem sengaja tidak '
-    "mengukur CPU/RAM pada segmen ini (lihat <code>video_service.go</code>), bukan kesalahan "
-    "pengambilan data. Baris tetap ditampilkan supaya bentuk tabel konsisten dengan tabel lain."
-)
-RATIO_CAPTION = (
-    "Rasio = nilai gRPC P50/P95/P99 dibagi nilai REST pada persentil yang sama. Nilai &lt; 1× "
-    "berarti gRPC lebih rendah dari REST pada persentil itu; nilai &gt; 1× berarti gRPC lebih tinggi."
-)
+CPU_RAM_NOTE_POINTS = [
+    'Baris "Worker ke Gateway" tidak punya data CPU/RAM.',
+    "Arsitektur sistem sengaja tidak mengukur CPU/RAM pada segmen ini. Lihat <code>video_service.go</code>.",
+    "Ini bukan kesalahan pengambilan data.",
+    "Baris tetap ditampilkan supaya bentuk tabel konsisten dengan tabel lain.",
+]
+RATIO_CAPTION_POINTS = [
+    "Rasio dihitung sebagai nilai gRPC dibagi nilai REST pada persentil yang sama.",
+]
 
 
-def render_table_section(title, unit, rows, extra_note=None):
+def render_table_section(title, unit, rows, extra_notes=None):
+    lower_is_better = LOWER_IS_BETTER[title.lower()]
     head_cells = "".join(f"<th>{h}</th>" for h in WIDE_HEADER)
     body_rows = []
     for row in rows:
@@ -296,10 +317,16 @@ def render_table_section(title, unit, rows, extra_note=None):
             cls = " class=\"na\"" if v is None else ""
             cells.append(f"<td{cls}>{fmt(v)}</td>")
         for v in row[7:10]:
-            cls = ratio_band_class(v)
+            cls = ratio_band_class(v, lower_is_better)
             cells.append(f'<td class="ratio-cell {cls}">{fmt(v, "×")}</td>')
         body_rows.append(f"<tr>{''.join(cells)}</tr>")
-    caption = RATIO_CAPTION + (f" {extra_note}" if extra_note else "")
+    direction_note = (
+        "Nilai lebih rendah lebih baik untuk metrik ini."
+        if lower_is_better
+        else "Nilai lebih tinggi lebih baik untuk metrik ini."
+    )
+    points = RATIO_CAPTION_POINTS + [direction_note] + (extra_notes or [])
+    caption = "".join(f"<li>{p}</li>" for p in points)
     return f"""
 <section class="table-block">
   <h2>{title} ({unit})</h2>
@@ -309,20 +336,20 @@ def render_table_section(title, unit, rows, extra_note=None):
       <tbody>{''.join(body_rows)}</tbody>
     </table>
   </div>
-  <div class="caption">{caption}</div>
+  <ul class="caption">{caption}</ul>
 </section>"""
 
 
 def write_payload_html(path, payload_size, sections):
-    """sections: list of (title, unit, rows, extra_note_or_None)."""
+    """sections: list of (title, unit, rows, extra_notes_or_None)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     body = "".join(render_table_section(t, u, r, n) for t, u, r, n in sections)
-    html = f"""<title>Skenario A — Payload {payload_size.upper()}</title>
+    html = f"""<title>Skenario A: Payload {payload_size.upper()}</title>
 <style>{HTML_STYLE}</style>
 <div class="page">
   <div>
-    <h1>Skenario A — Payload {payload_size.upper()}</h1>
-    <div class="sub">Hasil REST vs gRPC &mdash; Latency, Throughput, CPU, dan RAM</div>
+    <h1>Skenario A: Payload {payload_size.upper()}</h1>
+    <div class="sub">Hasil REST vs gRPC untuk Latency, Throughput, CPU, dan RAM</div>
   </div>
   {LEGEND_HTML}
   {body}
@@ -365,12 +392,12 @@ def main():
         write_wide_csv(base.with_suffix(".csv"), rows)
         write_wide_markdown(
             base.with_suffix(".md"),
-            f"Tabel {display} — Payload {payload_title} ({unit})",
+            f"Tabel {display}: Payload {payload_title} ({unit})",
             rows,
         )
         print(f"Wrote {base.with_suffix('.csv')} and .md")
-        note = CPU_RAM_NOTE if short in ("cpu", "ram") else None
-        html_sections.append((display, unit, rows, note))
+        notes = CPU_RAM_NOTE_POINTS if short in ("cpu", "ram") else None
+        html_sections.append((display, unit, rows, notes))
 
     html_path = root / "results" / "scenario_a" / "tables" / f"{args.payload_size}.html"
     write_payload_html(html_path, args.payload_size, html_sections)
