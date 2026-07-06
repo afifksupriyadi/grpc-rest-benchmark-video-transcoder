@@ -22,10 +22,18 @@ func NewPrometheusRecorder(reg *prometheus.Registry) *PrometheusRecorder {
 	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	reg.MustRegister(collectors.NewGoCollector())
 
+	// DefBuckets tops out at 10s but only has 3 buckets above 1s (2.5, 5, 10),
+	// so a rare multi-second outlier lands in a bucket spanning 1-1.5s of real
+	// range with only 1-2 samples in it, making histogram_quantile's linear
+	// interpolation land on an arbitrary-looking value near the bucket edge
+	// (observed: P99 repeatedly landing at ~2035-2065ms across unrelated
+	// payload/protocol combinations). Custom buckets give 24 evenly-spaced
+	// (50% growth) steps from 1ms to ~11s, matching the density already used
+	// for throughput/memory below.
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "gateway_segment_latency_seconds",
 		Help:    "Latency of each communication segment in seconds.",
-		Buckets: prometheus.DefBuckets,
+		Buckets: prometheus.ExponentialBuckets(0.001, 1.5, 24),
 	}, []string{"segment", "protocol", "scenario", "payload_size", "concurrency_level"})
 
 	throughput := prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -37,10 +45,15 @@ func NewPrometheusRecorder(reg *prometheus.Registry) *PrometheusRecorder {
 	// cpu/memory deliberately exclude concurrency_level: Scenario B's CPU/RAM
 	// is never recorded per-request via Observe(), so this label would never
 	// be populated for these two histograms (see Section 13.4).
+	//
+	// Max raised from 7.75 to 19.5 ratio/core: Scenario A data already hit
+	// the old ceiling exactly (7.75) on Gateway ke Client at 10MB, and
+	// Scenario B (concurrent requests, not yet run) can plausibly push CPU
+	// well past what a single sequential request does.
 	cpu := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "gateway_segment_cpu_usage_ratio",
 		Help:    "Per-request CPU usage during a segment, as a fraction of one core.",
-		Buckets: prometheus.LinearBuckets(0, 0.25, 32),
+		Buckets: prometheus.LinearBuckets(0, 0.5, 40),
 	}, []string{"segment", "protocol", "scenario", "payload_size"})
 
 	memory := prometheus.NewHistogramVec(prometheus.HistogramOpts{

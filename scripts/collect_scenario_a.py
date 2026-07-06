@@ -106,23 +106,36 @@ def collect_raw(base_url, scenario, payload_size, window):
     return raw
 
 
+RAW_CSV_HEADER = ["payload_size", "metric", "segment", "protocol", "percentile", "value", "unit"]
+
+
 def write_raw_csv(path, payload_size, raw):
+    """Replaces every existing row for this payload_size and rewrites the
+    whole file (rows for other payloads are kept as-is). Re-running the same
+    payload (e.g. after a bucket fix) is always safe: it's an upsert, never
+    a duplicate-appending append."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    is_new = not path.exists() or path.stat().st_size == 0
+
+    kept_rows = []
+    if path.exists() and path.stat().st_size > 0:
+        with path.open(newline="") as f:
+            for row in csv.DictReader(f):
+                if row["payload_size"] != payload_size:
+                    kept_rows.append([row[col] for col in RAW_CSV_HEADER])
+
+    unit_by_metric = {m: u for m, u, _ in METRICS}
+    new_rows = [
+        [payload_size, metric, segment, protocol, pct, value, unit_by_metric[metric]]
+        for (metric, segment, protocol), by_pct in sorted(raw.items())
+        for pct, value in sorted(by_pct.items())
+    ]
 
     def _do_write():
-        with path.open("a", newline="") as f:
+        with path.open("w", newline="") as f:
             writer = csv.writer(f)
-            if is_new:
-                writer.writerow(
-                    ["payload_size", "metric", "segment", "protocol", "percentile", "value", "unit"]
-                )
-            unit_by_metric = {m: u for m, u, _ in METRICS}
-            for (metric, segment, protocol), by_pct in sorted(raw.items()):
-                for pct, value in sorted(by_pct.items()):
-                    writer.writerow(
-                        [payload_size, metric, segment, protocol, pct, value, unit_by_metric[metric]]
-                    )
+            writer.writerow(RAW_CSV_HEADER)
+            writer.writerows(kept_rows)
+            writer.writerows(new_rows)
 
     _retry_write(path, _do_write)
 
