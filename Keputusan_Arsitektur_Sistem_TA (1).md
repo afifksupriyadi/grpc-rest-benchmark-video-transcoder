@@ -270,37 +270,96 @@ Setiap skenario dijalankan **30 kali per protokol** untuk menghasilkan data yang
 
 ## 8. Desain Docker
 
+**Status: Diimplementasikan 2026-07-06 (Fase 11), dengan 1 penyesuaian scope — lihat catatan di bawah.**
+
+Desain akhir (target penuh, sesuai Section 4.1) tetap 2 instance Worker dengan round-robin di Gateway. Namun implementasi Fase 11 sengaja dipecah jadi dua tahap terpisah, atas kesepakatan eksplisit saat sesi Dockerisasi:
+
+1. **Tahap 1 (selesai):** Dockerisasi Gateway + 1 Worker + Prometheus + Grafana dalam satu `docker-compose.yml`, tanpa round-robin. Tujuannya memverifikasi dulu bahwa jalur jaringan Docker bridge (menggantikan loopback `localhost` yang dipakai saat testing manual di WSL) benar-benar bekerja end-to-end, sebelum menambah kompleksitas 2 Worker sekaligus.
+2. **Tahap 2 (belum dikerjakan):** Menambah service `worker-2` ke compose dan mengimplementasikan logic round-robin di `gateway/cmd/server/main.go` (temuan F1 dari review kode) — dikerjakan di sesi terpisah setelah Tahap 1 stabil dipakai untuk testing resmi.
+
+Isi `docker-compose.yml` yang sudah berjalan (Tahap 1):
+
 ```yaml
 services:
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      ENV: docker
+      REST_PORT: 8091
+      GRPC_PORT: 50052
+      METRICS_PORT: 2113
+    networks:
+      - benchmark-net
+
   gateway:
-    build: ./gateway
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    environment:
+      ENV: docker
+      REST_PORT: 8080
+      GRPC_PORT: 50051
+      METRICS_PORT: 2112
+      WORKER_1_REST_ADDR: worker:8091
+      WORKER_1_GRPC_ADDR: worker:50052
+      HTTP_CLIENT_TIMEOUT: 60s
+      MAX_FILE_SIZE_BYTES: 524288000
     ports:
-      - "8080:8080"   # REST
-      - "50051:50051" # gRPC
-      - "2112:2112"   # Prometheus metrics endpoint
-
-  worker_1:
-    build: ./worker
-    ports:
-      - "50052:50052" # gRPC
-      - "2113:2113"   # Prometheus metrics endpoint
-
-  worker_2:
-    build: ./worker
-    ports:
-      - "50053:50053" # gRPC
-      - "2114:2114"   # Prometheus metrics endpoint
+      - "8080:8080"
+      - "50051:50051"
+      - "2112:2112"
+    depends_on:
+      - worker
+    networks:
+      - benchmark-net
 
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./prometheus.docker.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
     ports:
       - "9090:9090"
+    depends_on:
+      - gateway
+      - worker
+    networks:
+      - benchmark-net
 
   grafana:
-    image: grafana/grafana
+    image: grafana/grafana:11.6.0
     ports:
       - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - benchmark-net
+
+networks:
+  benchmark-net:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
 ```
+
+Catatan implementasi penting:
+
+- **Build context = root repo, bukan subdirektori service.** `gateway/Dockerfile` dan `worker/Dockerfile` sama-sama pakai `COPY . .` dari root, karena struktur Go Workspace (`go.work`) mereferensikan modul `gen/` dan `shared/` juga — kalau context dibatasi ke satu subdirektori saja, resolusi `go.work` akan gagal karena direktori yang di-`use` tidak ditemukan.
+- **Image Worker pakai `alpine:3.20` + `apk add ffmpeg`** — paket ini otomatis menyertakan `ffprobe` juga (dikonfirmasi ada di `/usr/bin/ffmpeg` dan `/usr/bin/ffprobe` di image final), karena Worker memanggil keduanya lewat `exec.Command`.
+- **Config Gateway/Worker di-set lewat `environment:` di compose, bukan file `.env`.** Loader `cleanenv.ReadConfig(".env", conf)` di ketiga service memang sudah otomatis fallback ke `cleanenv.ReadEnv(conf)` kalau file `.env` tidak ditemukan — jadi container bisa langsung pakai environment variable proses tanpa perlu ubah kode maupun bikin `.env` khusus Docker.
+- **Client CLI tetap di luar Docker**, sesuai Section 2.1 — jalan `go run` di host seperti biasa, terhubung ke Gateway lewat port yang dipublikasikan (`8080`, `50051`). Port Worker sengaja TIDAK dipublikasikan ke host karena hanya diakses Gateway dan Prometheus lewat network internal `benchmark-net`.
+- **`prometheus.docker.yml`** (file baru, terpisah dari `prometheus.yml` lama) memakai target scrape berbasis nama service Docker (`gateway:2112`, `worker:2113`) alih-alih `localhost`. `prometheus.yml` lama dibiarkan tidak berubah untuk alur `go run` manual di host kalau sewaktu-waktu masih dipakai untuk dev cepat.
+- **`grafana/provisioning/datasources/prometheus.yml`** (file baru) membuat datasource Prometheus (`http://prometheus:9090`) otomatis ter-set saat container Grafana start, tidak perlu setup ulang manual lewat UI tiap kali container dibuat ulang.
+- **Diverifikasi end-to-end:** `docker compose build` sukses, keempat service `running`, target Prometheus UP, transcode test dari Client (host) ke Gateway→Worker (container) sukses dengan log menunjukkan traffic dari IP bridge Docker (`172.24.0.x`) — bukti jalur jaringan riil sudah dipakai, bukan lagi loopback.
+
+Lihat Section 16.5 untuk prosedur lifecycle (kapan restart, kapan biarkan jalan terus) yang disusun khusus untuk stack Docker ini.
 
 ---
 
@@ -1114,29 +1173,24 @@ scripts/run_concurrent_batch.sh                            BARU (di luar struktu
 ```
 Tujuan: jalankan N instance Client bersamaan, catat jam mulai-selesai tiap batch ke file log, diulang 30 kali per level concurrency, menggantikan langkah manual yang dijelaskan di Section 14.4.
 
-### Fase 9 — Setup Prometheus (Lokal, Tanpa Docker)
-**Status: ⬜ Belum dikerjakan**
-```
-prometheus.yml                                          BARU (di root project, di luar struktur Go module)
-```
-Tujuan: install Prometheus sebagai binary, jalan langsung di WSL. Tulis scrape config untuk `localhost:2112` (gateway) dan `localhost:2113` (worker), interval 1 detik (sesuai Section 13.5). Verifikasi lewat browser (`localhost:9090`) bahwa kedua target berhasil di-scrape, sebelum lanjut ke Fase 10.
+### Fase 9 — Setup Prometheus
+**Status: ✅ Selesai.** Awalnya dijalankan sebagai binary lokal di WSL (`prometheus.yml`, scrape `localhost:2112`/`localhost:2113`, verifikasi manual lewat `localhost:9090`). Per Fase 11 (2026-07-06), Prometheus dipindah masuk ke `docker-compose.yml` sebagai service `prometheus` (image `prom/prometheus:v2.53.0`), pakai config baru `prometheus.docker.yml` dengan target berbasis nama service Docker (`gateway:2112`, `worker:2113`). `prometheus.yml` versi lokal lama dibiarkan tidak dihapus untuk alur `go run` manual kalau sewaktu-waktu masih dipakai.
 
-### Fase 10 — Setup Grafana (Lokal, Sambungkan ke Prometheus)
-**Status: ⬜ Belum dikerjakan**
-```
-(tidak ada file kode — konfigurasi dilakukan lewat UI Grafana)
-```
-Tujuan: install Grafana, tambahkan Prometheus sebagai data source, buat satu dashboard pembuktian konsep (panel latency P50/P95/P99 untuk satu segmen) sebelum membangun dashboard lengkap untuk seluruh skenario.
+### Fase 10 — Setup Grafana
+**Status: ✅ Selesai.** Sama seperti Fase 9, awalnya instalasi lokal manual di WSL (port 3000, datasource Prometheus di-setup lewat UI). Per Fase 11, Grafana dipindah ke `docker-compose.yml` sebagai service `grafana` (image `grafana/grafana:11.6.0`), dengan datasource Prometheus di-auto-provision lewat `grafana/provisioning/datasources/prometheus.yml` (tidak perlu setup ulang manual lewat UI tiap kali container dibuat ulang).
 
 ### Fase 11 — Dockerisasi dan Round-Robin 2 Worker (Ditunda Terakhir)
-**Status: ⬜ Belum dikerjakan**
+**Status: ✅ Selesai sebagian (2026-07-06) — Dockerisasi Gateway+Worker+Prometheus+Grafana SELESAI, round-robin 2 Worker MASIH TERTUNDA.**
 ```
 gateway/Dockerfile                                       BARU
 worker/Dockerfile                                        BARU
 docker-compose.yml                                        BARU
-gateway/cmd/server/main.go                                 EDIT — round-robin antara Worker1 dan Worker2
+.dockerignore                                              BARU
+prometheus.docker.yml                                      BARU
+grafana/provisioning/datasources/prometheus.yml             BARU
+gateway/cmd/server/main.go                                 BELUM diubah — round-robin antara Worker1 dan Worker2 masih tertunda
 ```
-Tujuan: containerisasi gateway, worker_1, worker_2, prometheus, dan grafana dalam satu `docker-compose.yml`. Sekaligus memperbaiki temuan F1 dari review kode sebelumnya — saat ini Gateway hanya pernah memanggil Worker1, Worker2 belum pernah dipakai sama sekali meski sudah ada di config. Fase ini sengaja ditunda paling akhir karena testing fungsional sekarang sudah bisa berjalan langsung lewat `go run` di host, tanpa perlu Docker untuk melihat data masuk ke Grafana.
+Fase ini akhirnya dipecah jadi dua tahap saat eksekusi (lihat Section 8 untuk detail lengkap): Tahap 1 (Dockerisasi dengan 1 Worker, sudah selesai dan diverifikasi end-to-end) dan Tahap 2 (tambah `worker-2` + logic round-robin di Gateway, memperbaiki temuan F1, belum dikerjakan — ditunda ke sesi terpisah setelah Tahap 1 stabil dipakai testing resmi). Alasan Dockerisasi dikerjakan lebih dulu daripada rencana awal ("paling akhir" setelah semua testing lokal selesai): ditemukan saat mulai testing resmi bahwa loopback `localhost` menghasilkan throughput yang tidak representatif kondisi microservices nyata (lihat Section 16.6), sehingga Dockerisasi dipercepat jadi prasyarat sebelum pengambilan data resmi Skenario A/B, bukan lagi murni tahap "nice to have" di akhir.
 
 ### Catatan Urutan yang Diperbarui
 
@@ -1267,6 +1321,43 @@ Prosedur per level concurrency:
 | Cara baca | `histogram_quantile()`, instan, tanpa filter waktu | `rate()` / `avg_over_time()`, dibatasi rentang waktu, lalu dirata-rata manual |
 | Sensitif terhadap restart? | Ya — wajib dibaca sebelum restart | Tidak terlalu — data tetap valid selama rentang waktunya tercatat dan tidak ada restart di tengah batch |
 
-### 16.5 Catatan untuk Fase 8
+### 16.5 Prosedur Lifecycle Docker (Pasca Fase 11)
+
+Section ini melengkapi 16.1-16.4 setelah Prometheus dan Grafana pindah dari proses lokal manual di WSL menjadi service dalam `docker-compose.yml` (Section 8). Aturan lama "restart semua 4 komponen (Gateway, Worker, Prometheus, Grafana) antar titik ukuran" perlu disesuaikan, karena keempatnya sekarang punya karakter penyimpanan data yang berbeda.
+
+**Alasan penyesuaian:** Histogram Gateway/Worker tetap bersifat in-memory per proses seperti sebelumnya (restart = counter kumulatif kembali ke nol, sesuai 16.1). Namun Prometheus sekarang menyimpan data di named volume Docker (`prometheus-data`) yang bertahan lintas restart container — merestart container Prometheus TIDAK menghapus data lama di dalamnya (beda karakter dari histogram Gateway/Worker), kecuali volume itu sendiri yang dihapus (`docker compose down -v`). Grafana juga sama, hanya UI query di atas Prometheus, restart tidak mempengaruhi data.
+
+**Prinsip baru:** Prometheus dan Grafana dibiarkan jalan terus-menerus dari awal sampai akhir seluruh sesi pengujian (bahkan bisa mencakup Skenario A dan B sekaligus). Yang di-restart antar titik ukuran hanya Gateway dan Worker — itu pun tetap opsional sesuai prinsip 16.2 (isolasi sudah terjamin lewat label).
+
+```bash
+# Sekali di awal sesi hari itu
+docker compose up -d
+docker compose ps                     # pastikan 4 service running
+curl localhost:9090/api/v1/targets    # pastikan target gateway & worker UP
+
+# Antar titik ukuran (Skenario A: payload; Skenario B latency/throughput: concurrency level)
+# — HANYA restart gateway+worker, JANGAN restart prometheus/grafana
+docker compose restart gateway worker
+
+# Akhir sesi/hari — container berhenti, volume (data Prometheus/Grafana) TETAP ada
+docker compose down
+```
+
+**Yang wajib dihindari:** menjalankan `docker compose restart` tanpa argumen service — itu me-restart keempat service sekaligus, termasuk Prometheus/Grafana yang seharusnya tetap hidup. Restart blanket seperti ini tidak mencapai apa pun secara teknis (data Prometheus tidak terhapus cuma karena container-nya restart) dan hanya menambah overhead (gap scraping, Grafana sempat disconnect).
+
+**Khusus Skenario B bagian CPU/RAM (16.3(b)):** batasan "restart tidak boleh terjadi di tengah satu batch yang sedang berjalan" (dari 16.3) tetap berlaku sepenuhnya untuk restart `gateway worker`. Tambahan aturan baru: jangan pernah pakai `docker compose down -v` (flag `-v` menghapus volume, termasuk histori Prometheus yang jadi sumber `rate()`/`avg_over_time()` untuk seluruh batch) sebelum semua angka CPU/RAM dari seluruh batch di seluruh level sudah selesai dibaca dan dicatat ke laporan. `docker compose down` biasa (tanpa `-v`) aman dipakai kapan saja karena volume tetap ada.
+
+Ringkasan command per situasi:
+
+| Situasi | Command | Kena Prometheus/Grafana? |
+|---|---|---|
+| Mulai sesi hari itu | `docker compose up -d` | Ya, sekali di awal |
+| Antar payload (Skenario A) | `docker compose restart gateway worker` | Tidak |
+| Antar concurrency level (Skenario B, latency/throughput) | `docker compose restart gateway worker` | Tidak |
+| Antar batch (Skenario B, CPU/RAM) — HANYA di sela batch, tidak di tengah batch | `docker compose restart gateway worker` | Tidak |
+| Akhir sesi/hari | `docker compose down` (tanpa `-v`) | Container berhenti, volume tetap ada |
+| Ganti versi image / reset total | `docker compose down -v` | Volume ikut terhapus — hindari sampai semua data sudah dicatat |
+
+### 16.6 Catatan untuk Fase 8
 
 240 kali pencatatan jam manual (30 batch × 4 level × 2 protokol) untuk CPU/RAM Skenario B tidak realistis dikerjakan tangan satu-satu — ini alasan teknis tambahan kenapa Fase 8 (`scripts/run_concurrent_batch.sh`) penting sebelum pengambilan data resmi Skenario B, meski untuk verifikasi mekanisme di Fase 9 cukup dilakukan manual dalam skala kecil (1 batch, beberapa instance saja).
