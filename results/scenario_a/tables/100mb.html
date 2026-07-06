@@ -1,0 +1,121 @@
+<title>Skenario A — Payload 100MB</title>
+<style>
+:root {
+  --ink: #1b2430; --ink-soft: #4b5563; --paper: #f7f8fa; --paper-raised: #ffffff;
+  --line: #d9dee4; --accent: #2f5d62; --accent-soft: #e4edec;
+  --good-light: #dcefe4; --good-medium: #a9d9bd; --good-strong: #3f8f6c;
+  --warn-light: #f7e3da; --warn-medium: #eab596; --warn-strong: #b5502f;
+  --neutral: #eef0f2; --na: #f2f2f2;
+}
+:root[data-theme="dark"] {
+  --ink: #e7ebef; --ink-soft: #a8b2bd; --paper: #14181d; --paper-raised: #1c2229;
+  --line: #333b44; --accent: #7fb8ba; --accent-soft: #1f2d2d;
+  --good-light: #17301f; --good-medium: #1f4a30; --good-strong: #3f8f6c;
+  --warn-light: #3a2318; --warn-medium: #5c3320; --warn-strong: #d97a4c;
+  --neutral: #262b31; --na: #20242a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #e7ebef; --ink-soft: #a8b2bd; --paper: #14181d; --paper-raised: #1c2229;
+    --line: #333b44; --accent: #7fb8ba; --accent-soft: #1f2d2d;
+    --good-light: #17301f; --good-medium: #1f4a30; --good-strong: #3f8f6c;
+    --warn-light: #3a2318; --warn-medium: #5c3320; --warn-strong: #d97a4c;
+    --neutral: #262b31; --na: #20242a;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: -apple-system, "Segoe UI", system-ui, sans-serif; padding: 2.5rem 1.25rem 4rem; }
+.page { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 2rem; }
+h1 { font-family: Iowan Old Style, Charter, Georgia, serif; font-size: 1.9rem; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; margin: 0; }
+.sub { color: var(--ink-soft); font-size: 0.95rem; margin-top: 0.35rem; }
+.legend { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.legend-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-soft); font-weight: 600; }
+.swatches { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; align-items: center; }
+.swatch { display: flex; align-items: center; gap: 0.45rem; font-size: 0.85rem; }
+.swatch i { width: 0.9rem; height: 0.9rem; border-radius: 3px; display: inline-block; border: 1px solid rgba(0,0,0,0.08); }
+.legend-note { font-size: 0.82rem; color: var(--ink-soft); line-height: 1.5; }
+section.table-block { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem 1.25rem 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+section.table-block h2 { font-family: Iowan Old Style, Charter, Georgia, serif; font-size: 1.15rem; font-weight: 600; margin: 0; }
+.table-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; font-size: 0.86rem; }
+thead th { background: var(--accent-soft); color: var(--accent); font-family: -apple-system, "Segoe UI", system-ui, sans-serif; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; padding: 0.55rem 0.7rem; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+thead th:first-child { text-align: left; }
+tbody td { padding: 0.5rem 0.7rem; text-align: right; border-bottom: 1px solid var(--line); }
+tbody td:first-child { text-align: left; font-family: -apple-system, "Segoe UI", system-ui, sans-serif; font-size: 0.86rem; color: var(--ink); }
+tbody tr:last-child td { border-bottom: none; }
+.ratio-cell { font-weight: 600; border-radius: 5px; }
+.neutral { background: var(--neutral); }
+.good-light { background: var(--good-light); } .good-medium { background: var(--good-medium); }
+.good-strong { background: var(--good-strong); color: #fff; }
+.warn-light { background: var(--warn-light); } .warn-medium { background: var(--warn-medium); }
+.warn-strong { background: var(--warn-strong); color: #fff; }
+.na { background: var(--na); color: var(--ink-soft); }
+.caption { font-size: 0.8rem; color: var(--ink-soft); line-height: 1.5; }
+</style>
+<div class="page">
+  <div>
+    <h1>Skenario A — Payload 100MB</h1>
+    <div class="sub">Hasil REST vs gRPC &mdash; Latency, Throughput, CPU, dan Memori</div>
+  </div>
+  
+<div class="legend">
+  <div class="legend-title">Keterangan Warna Rasio (gRPC ÷ REST)</div>
+  <div class="swatches">
+    <div class="swatch"><i style="background:var(--good-strong)"></i>gRPC jauh lebih rendah (&lt; 0.2×)</div>
+    <div class="swatch"><i style="background:var(--good-medium)"></i>gRPC lebih rendah (0.2×-0.5×)</div>
+    <div class="swatch"><i style="background:var(--good-light)"></i>gRPC sedikit lebih rendah (0.5×-0.9×)</div>
+    <div class="swatch"><i style="background:var(--neutral); border:1px solid var(--line)"></i>Setara (0.9×-1.1×)</div>
+    <div class="swatch"><i style="background:var(--warn-light)"></i>gRPC sedikit lebih tinggi (1.1×-2×)</div>
+    <div class="swatch"><i style="background:var(--warn-medium)"></i>gRPC lebih tinggi (2×-5×)</div>
+    <div class="swatch"><i style="background:var(--warn-strong)"></i>gRPC jauh lebih tinggi (&gt; 5×)</div>
+    <div class="swatch"><i style="background:var(--na)"></i>Tidak ada data</div>
+  </div>
+  <div class="legend-note">
+    Rasio dihitung sebagai nilai gRPC dibagi nilai REST pada persentil yang sama (P50 dengan P50, P95 dengan P95, P99 dengan P99).
+    Warna murni menunjukkan arah dan besar selisih (gRPC lebih rendah atau lebih tinggi dari REST) &mdash; bukan penilaian baik/buruk,
+    karena arti "lebih rendah lebih baik" berbeda antar metrik (mis. latency vs throughput).
+  </div>
+</div>
+
+  
+<section class="table-block">
+  <h2>Latency (ms)</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Segmen</th><th>REST P50</th><th>REST P95</th><th>REST P99</th><th>gRPC P50</th><th>gRPC P95</th><th>gRPC P99</th><th>Rasio P50</th><th>Rasio P95</th><th>Rasio P99</th></tr></thead>
+      <tbody><tr><td>Client ke Gateway</td><td>178.13</td><td>1412.50</td><td>2282.50</td><td>414.77</td><td>2162.50</td><td>4275.00</td><td class="ratio-cell warn-medium">2.33×</td><td class="ratio-cell warn-light">1.53×</td><td class="ratio-cell warn-light">1.87×</td></tr><tr><td>Gateway ke Worker</td><td>187.04</td><td>2162.50</td><td>4275.00</td><td>389.42</td><td>758.33</td><td>951.67</td><td class="ratio-cell warn-medium">2.08×</td><td class="ratio-cell good-medium">0.35×</td><td class="ratio-cell good-medium">0.22×</td></tr><tr><td>Worker ke Gateway</td><td>29.82</td><td>443.75</td><td>855.00</td><td>81.55</td><td>213.87</td><td>242.77</td><td class="ratio-cell warn-medium">2.73×</td><td class="ratio-cell good-medium">0.48×</td><td class="ratio-cell good-medium">0.28×</td></tr><tr><td>Gateway ke Client</td><td>18.37</td><td>77.50</td><td>2065.00</td><td>81.55</td><td>387.50</td><td>2065.00</td><td class="ratio-cell warn-medium">4.44×</td><td class="ratio-cell warn-strong">5.00×</td><td class="ratio-cell neutral">1.00×</td></tr></tbody>
+    </table>
+  </div>
+  <div class="caption">Rasio = nilai gRPC P50/P95/P99 dibagi nilai REST pada persentil yang sama. Nilai &lt; 1× berarti gRPC lebih rendah dari REST pada persentil itu; nilai &gt; 1× berarti gRPC lebih tinggi.</div>
+</section>
+<section class="table-block">
+  <h2>Throughput (MB/s)</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Segmen</th><th>REST P50</th><th>REST P95</th><th>REST P99</th><th>gRPC P50</th><th>gRPC P95</th><th>gRPC P99</th><th>Rasio P50</th><th>Rasio P95</th><th>Rasio P99</th></tr></thead>
+      <tbody><tr><td>Client ke Gateway</td><td>738.48</td><td>995.45</td><td>1018.29</td><td>204.10</td><td>465.70</td><td>502.74</td><td class="ratio-cell good-medium">0.28×</td><td class="ratio-cell good-medium">0.47×</td><td class="ratio-cell good-medium">0.49×</td></tr><tr><td>Gateway ke Worker</td><td>633.26</td><td>984.93</td><td>1016.19</td><td>326.47</td><td>493.45</td><td>508.29</td><td class="ratio-cell good-light">0.52×</td><td class="ratio-cell good-medium">0.50×</td><td class="ratio-cell good-medium">0.50×</td></tr><tr><td>Worker ke Gateway</td><td>723.48</td><td>1013.98</td><td>1751.04</td><td>220.80</td><td>470.76</td><td>503.75</td><td class="ratio-cell good-medium">0.31×</td><td class="ratio-cell good-medium">0.46×</td><td class="ratio-cell good-medium">0.29×</td></tr><tr><td>Gateway ke Client</td><td>1472.04</td><td>2028.80</td><td>3502.08</td><td>208.00</td><td>458.97</td><td>501.39</td><td class="ratio-cell good-strong">0.14×</td><td class="ratio-cell good-medium">0.23×</td><td class="ratio-cell good-strong">0.14×</td></tr></tbody>
+    </table>
+  </div>
+  <div class="caption">Rasio = nilai gRPC P50/P95/P99 dibagi nilai REST pada persentil yang sama. Nilai &lt; 1× berarti gRPC lebih rendah dari REST pada persentil itu; nilai &gt; 1× berarti gRPC lebih tinggi.</div>
+</section>
+<section class="table-block">
+  <h2>Cpu (ratio/core)</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Segmen</th><th>REST P50</th><th>REST P95</th><th>REST P99</th><th>gRPC P50</th><th>gRPC P95</th><th>gRPC P99</th><th>Rasio P50</th><th>Rasio P95</th><th>Rasio P99</th></tr></thead>
+      <tbody><tr><td>Client ke Gateway</td><td>1.64</td><td>1.88</td><td>1.98</td><td>2.11</td><td>2.25</td><td>2.43</td><td class="ratio-cell warn-light">1.29×</td><td class="ratio-cell warn-light">1.20×</td><td class="ratio-cell warn-light">1.23×</td></tr><tr><td>Gateway ke Worker</td><td>1.79</td><td>1.98</td><td>2.00</td><td>2.12</td><td>2.24</td><td>2.25</td><td class="ratio-cell warn-light">1.18×</td><td class="ratio-cell warn-light">1.13×</td><td class="ratio-cell warn-light">1.12×</td></tr><tr><td>Worker ke Gateway</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="ratio-cell na">—</td><td class="ratio-cell na">—</td><td class="ratio-cell na">—</td></tr><tr><td>Gateway ke Client</td><td>1.05</td><td>1.94</td><td>2.18</td><td>1.38</td><td>1.57</td><td>1.71</td><td class="ratio-cell warn-light">1.31×</td><td class="ratio-cell good-light">0.81×</td><td class="ratio-cell good-light">0.78×</td></tr></tbody>
+    </table>
+  </div>
+  <div class="caption">Rasio = nilai gRPC P50/P95/P99 dibagi nilai REST pada persentil yang sama. Nilai &lt; 1× berarti gRPC lebih rendah dari REST pada persentil itu; nilai &gt; 1× berarti gRPC lebih tinggi. Baris "Worker ke Gateway" tidak punya data CPU/RAM &mdash; arsitektur sistem sengaja tidak mengukur CPU/RAM pada segmen ini (lihat <code>video_service.go</code>), bukan kesalahan pengambilan data. Baris tetap ditampilkan supaya bentuk tabel konsisten dengan tabel lain.</div>
+</section>
+<section class="table-block">
+  <h2>Memory (MB)</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Segmen</th><th>REST P50</th><th>REST P95</th><th>REST P99</th><th>gRPC P50</th><th>gRPC P95</th><th>gRPC P99</th><th>Rasio P50</th><th>Rasio P95</th><th>Rasio P99</th></tr></thead>
+      <tbody><tr><td>Client ke Gateway</td><td>758.86</td><td>997.49</td><td>1018.70</td><td>384.11</td><td>499.41</td><td>509.66</td><td class="ratio-cell good-light">0.51×</td><td class="ratio-cell good-medium">0.50×</td><td class="ratio-cell good-medium">0.50×</td></tr><tr><td>Gateway ke Worker</td><td>384.00</td><td>499.20</td><td>509.44</td><td>384.00</td><td>499.20</td><td>509.44</td><td class="ratio-cell neutral">1.00×</td><td class="ratio-cell neutral">1.00×</td><td class="ratio-cell neutral">1.00×</td></tr><tr><td>Worker ke Gateway</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="ratio-cell na">—</td><td class="ratio-cell na">—</td><td class="ratio-cell na">—</td></tr><tr><td>Gateway ke Client</td><td>738.46</td><td>995.45</td><td>1018.29</td><td>384.00</td><td>499.20</td><td>509.44</td><td class="ratio-cell good-light">0.52×</td><td class="ratio-cell good-medium">0.50×</td><td class="ratio-cell good-medium">0.50×</td></tr></tbody>
+    </table>
+  </div>
+  <div class="caption">Rasio = nilai gRPC P50/P95/P99 dibagi nilai REST pada persentil yang sama. Nilai &lt; 1× berarti gRPC lebih rendah dari REST pada persentil itu; nilai &gt; 1× berarti gRPC lebih tinggi. Baris "Worker ke Gateway" tidak punya data CPU/RAM &mdash; arsitektur sistem sengaja tidak mengukur CPU/RAM pada segmen ini (lihat <code>video_service.go</code>), bukan kesalahan pengambilan data. Baris tetap ditampilkan supaya bentuk tabel konsisten dengan tabel lain.</div>
+</section>
+</div>
