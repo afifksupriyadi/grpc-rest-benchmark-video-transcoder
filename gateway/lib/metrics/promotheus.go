@@ -31,7 +31,7 @@ func NewPrometheusRecorder(reg *prometheus.Registry) *PrometheusRecorder {
 	throughput := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "gateway_segment_throughput_bytes_per_second",
 		Help:    "Throughput of each communication segment in bytes per second.",
-		Buckets: prometheus.ExponentialBuckets(1024, 2, 20),
+		Buckets: prometheus.ExponentialBuckets(1024, 2, 24),
 	}, []string{"segment", "protocol", "scenario", "payload_size", "concurrency_level"})
 
 	// cpu/memory deliberately exclude concurrency_level: Scenario B's CPU/RAM
@@ -40,7 +40,7 @@ func NewPrometheusRecorder(reg *prometheus.Registry) *PrometheusRecorder {
 	cpu := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "gateway_segment_cpu_usage_ratio",
 		Help:    "Per-request CPU usage during a segment, as a fraction of one core.",
-		Buckets: prometheus.LinearBuckets(0, 0.1, 20),
+		Buckets: prometheus.LinearBuckets(0, 0.25, 32),
 	}, []string{"segment", "protocol", "scenario", "payload_size"})
 
 	memory := prometheus.NewHistogramVec(prometheus.HistogramOpts{
