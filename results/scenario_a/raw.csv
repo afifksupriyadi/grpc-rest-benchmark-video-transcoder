@@ -1,3 +1,4 @@
+payload_size,metric,segment,protocol,percentile,value,unit
 10mb,cpu_usage_ratio,client_to_gateway,grpc,50,2.1,ratio/core
 10mb,cpu_usage_ratio,client_to_gateway,grpc,95,2.44,ratio/core
 10mb,cpu_usage_ratio,client_to_gateway,grpc,99,2.49,ratio/core
@@ -26,7 +27,7 @@
 10mb,latency_seconds,gateway_to_client,grpc,95,24.69,ms
 10mb,latency_seconds,gateway_to_client,grpc,99,2035.0,ms
 10mb,latency_seconds,gateway_to_client,rest,50,2.98,ms
-10mb,latency_seconds,gateway_to_client,rest,95,20.87,ms
+10mb,latency_seconds,gateway_to_client,rest,95,20.88,ms
 10mb,latency_seconds,gateway_to_client,rest,99,42.25,ms
 10mb,latency_seconds,gateway_to_worker,grpc,50,46.53,ms
 10mb,latency_seconds,gateway_to_worker,grpc,95,94.05,ms
@@ -41,7 +42,7 @@
 10mb,latency_seconds,worker_to_gateway,rest,95,74.17,ms
 10mb,latency_seconds,worker_to_gateway,rest,99,94.83,ms
 10mb,memory_usage_bytes,client_to_gateway,grpc,50,49.1,MB
-10mb,memory_usage_bytes,client_to_gateway,grpc,95,78.46,MB
+10mb,memory_usage_bytes,client_to_gateway,grpc,95,78.45,MB
 10mb,memory_usage_bytes,client_to_gateway,grpc,99,118.09,MB
 10mb,memory_usage_bytes,client_to_gateway,rest,50,91.26,MB
 10mb,memory_usage_bytes,client_to_gateway,rest,95,124.33,MB
@@ -107,8 +108,8 @@
 50mb,latency_seconds,client_to_gateway,rest,95,141.25,ms
 50mb,latency_seconds,client_to_gateway,rest,99,228.25,ms
 50mb,latency_seconds,gateway_to_client,grpc,50,39.5,ms
-50mb,latency_seconds,gateway_to_client,grpc,95,81.87,ms
-50mb,latency_seconds,gateway_to_client,grpc,99,96.38,ms
+50mb,latency_seconds,gateway_to_client,grpc,95,81.88,ms
+50mb,latency_seconds,gateway_to_client,grpc,99,96.37,ms
 50mb,latency_seconds,gateway_to_client,rest,50,8.45,ms
 50mb,latency_seconds,gateway_to_client,rest,95,24.04,ms
 50mb,latency_seconds,gateway_to_client,rest,99,2065.0,ms
@@ -208,7 +209,7 @@
 100mb,latency_seconds,worker_to_gateway,rest,50,29.81,ms
 100mb,latency_seconds,worker_to_gateway,rest,95,443.75,ms
 100mb,latency_seconds,worker_to_gateway,rest,99,855.0,ms
-100mb,memory_usage_bytes,client_to_gateway,grpc,50,384.02,MB
+100mb,memory_usage_bytes,client_to_gateway,grpc,50,384.01,MB
 100mb,memory_usage_bytes,client_to_gateway,grpc,95,499.23,MB
 100mb,memory_usage_bytes,client_to_gateway,grpc,99,509.47,MB
 100mb,memory_usage_bytes,client_to_gateway,rest,50,758.86,MB
@@ -226,10 +227,10 @@
 100mb,memory_usage_bytes,gateway_to_worker,rest,50,384.0,MB
 100mb,memory_usage_bytes,gateway_to_worker,rest,95,499.2,MB
 100mb,memory_usage_bytes,gateway_to_worker,rest,99,509.44,MB
-100mb,throughput_bytes_per_second,client_to_gateway,grpc,50,204.02,MB/s
-100mb,throughput_bytes_per_second,client_to_gateway,grpc,95,465.62,MB/s
+100mb,throughput_bytes_per_second,client_to_gateway,grpc,50,204.01,MB/s
+100mb,throughput_bytes_per_second,client_to_gateway,grpc,95,465.61,MB/s
 100mb,throughput_bytes_per_second,client_to_gateway,grpc,99,502.72,MB/s
-100mb,throughput_bytes_per_second,client_to_gateway,rest,50,738.47,MB/s
+100mb,throughput_bytes_per_second,client_to_gateway,rest,50,738.46,MB/s
 100mb,throughput_bytes_per_second,client_to_gateway,rest,95,995.45,MB/s
 100mb,throughput_bytes_per_second,client_to_gateway,rest,99,1018.29,MB/s
 100mb,throughput_bytes_per_second,gateway_to_client,grpc,50,208.0,MB/s

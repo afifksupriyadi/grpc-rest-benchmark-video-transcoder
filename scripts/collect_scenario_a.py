@@ -108,7 +108,7 @@ def collect_raw(base_url, scenario, payload_size, window):
 
 def write_raw_csv(path, payload_size, raw):
     path.parent.mkdir(parents=True, exist_ok=True)
-    is_new = not path.exists()
+    is_new = not path.exists() or path.stat().st_size == 0
 
     def _do_write():
         with path.open("a", newline="") as f:
