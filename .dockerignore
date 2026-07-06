@@ -1,0 +1,6 @@
+.git/
+data/
+client/output/
+*.md
+.env
+**/.env

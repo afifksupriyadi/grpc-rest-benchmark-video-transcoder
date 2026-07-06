@@ -1,0 +1,67 @@
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      ENV: docker
+      REST_PORT: 8091
+      GRPC_PORT: 50052
+      METRICS_PORT: 2113
+    networks:
+      - benchmark-net
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    environment:
+      ENV: docker
+      REST_PORT: 8080
+      GRPC_PORT: 50051
+      METRICS_PORT: 2112
+      WORKER_1_REST_ADDR: worker:8091
+      WORKER_1_GRPC_ADDR: worker:50052
+      HTTP_CLIENT_TIMEOUT: 60s
+      MAX_FILE_SIZE_BYTES: 524288000
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+      - "2112:2112"
+    depends_on:
+      - worker
+    networks:
+      - benchmark-net
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./prometheus.docker.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - gateway
+      - worker
+    networks:
+      - benchmark-net
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - benchmark-net
+
+networks:
+  benchmark-net:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
