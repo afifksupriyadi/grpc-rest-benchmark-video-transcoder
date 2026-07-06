@@ -33,3 +33,6 @@ go.work.sum
 
 # Transcoding output files
 client/output/
+
+# Local Prometheus TSDB data (from running prometheus manually outside Docker)
+data/
