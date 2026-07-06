@@ -36,3 +36,6 @@ client/output/
 
 # Local Prometheus TSDB data (from running prometheus manually outside Docker)
 data/
+
+# Rendered notebook charts, regenerated fresh by scenario_a_visualization.ipynb
+notebooks/figures/
